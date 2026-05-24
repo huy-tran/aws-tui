@@ -1,0 +1,10 @@
+/bin/
+/dist/
+/aws-tui
+/aws-tui.exe
+/smoke
+/smoke.exe
+/.idea/
+/.vscode/
+/.claude/
+*.log
