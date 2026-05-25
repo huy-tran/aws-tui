@@ -68,6 +68,10 @@ type (
 		group string
 		items []LogStream
 	}
+	streamEventsLoadedMsg struct {
+		stream string
+		events []LogEvent
+	}
 	searchDoneMsg struct {
 		events []LogEvent
 		more   bool
@@ -93,6 +97,7 @@ type mode int
 const (
 	modeGroups mode = iota
 	modeStreams
+	modeStreamEvents
 	modeSearch
 	modeResults
 	modeLiveTail
@@ -124,6 +129,10 @@ type Model struct {
 	target  LogGroup
 	streams []LogStream
 	stTable datatable.Model
+
+	streamTarget        string
+	streamEvents        []LogEvent
+	streamEventsLoading bool
 
 	pattern      textinput.Model
 	selectedRange timeRange
@@ -209,7 +218,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) anyLoading() bool {
-	return m.groupsLoading || m.searchLoading
+	return m.groupsLoading || m.searchLoading || m.streamEventsLoading
 }
 
 func (m Model) loadGroupsCmd(token string, force bool) tea.Cmd {
@@ -248,7 +257,6 @@ func (m Model) loadGroupsCmd(token string, force bool) tea.Cmd {
 		}
 		next := awssdk.ToString(out.NextToken)
 		if token == "" {
-			ctx.Cache.Set(key, items, groupsCacheTTL)
 			return groupsLoadedMsg{items: items, token: next}
 		}
 		return groupsAppendedMsg{items: items, token: next}
@@ -284,6 +292,36 @@ func (m Model) loadStreamsCmd(group string) tea.Cmd {
 		}
 		ctx.Cache.Set(key, items, streamsCacheTTL)
 		return streamsLoadedMsg{group: group, items: items}
+	}
+}
+
+func (m Model) loadStreamEventsCmd(group, stream string) tea.Cmd {
+	ctx := m.ctx
+	return func() tea.Msg {
+		client := ctx.Logs()
+		out, err := client.GetLogEvents(context.Background(), &logs.GetLogEventsInput{
+			LogGroupName:  awssdk.String(group),
+			LogStreamName: awssdk.String(stream),
+			Limit:         awssdk.Int32(1000),
+			StartFromHead: awssdk.Bool(false),
+		})
+		if err != nil {
+			return errMsg{err: err}
+		}
+		events := make([]LogEvent, 0, len(out.Events))
+		for _, e := range out.Events {
+			ts := time.Time{}
+			if e.Timestamp != nil {
+				ts = time.UnixMilli(*e.Timestamp).Local()
+			}
+			events = append(events, LogEvent{
+				Time:    ts,
+				Stream:  stream,
+				Message: awssdk.ToString(e.Message),
+			})
+		}
+		sort.Slice(events, func(i, j int) bool { return events[i].Time.Before(events[j].Time) })
+		return streamEventsLoadedMsg{stream: stream, events: events}
 	}
 }
 
@@ -559,12 +597,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.groupsToken = msg.token
 		m.lastLoaded = time.Now()
 		m.applyGroupFilter()
+		if m.groupsToken != "" {
+			return m, m.loadGroupsCmd(m.groupsToken, true)
+		}
+		m.ctx.Cache.Set("logs:groups:"+m.ctx.Region, m.groups, groupsCacheTTL)
 		return m, nil
 
 	case groupsAppendedMsg:
 		m.groups = append(m.groups, msg.items...)
 		m.groupsToken = msg.token
 		m.applyGroupFilter()
+		if m.groupsToken != "" {
+			return m, m.loadGroupsCmd(m.groupsToken, true)
+		}
+		m.ctx.Cache.Set("logs:groups:"+m.ctx.Region, m.groups, groupsCacheTTL)
+		return m, nil
+
+	case streamEventsLoadedMsg:
+		m.streamEventsLoading = false
+		m.streamEvents = msg.events
+		m.viewport.SetContent(renderEvents(m.streamEvents))
+		m.viewport.GotoBottom()
 		return m, nil
 
 	case streamsLoadedMsg:
@@ -668,9 +721,37 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.ctx.Cache.Invalidate("logs:streams:" + m.target.Name)
 			return m, m.loadStreamsCmd(m.target.Name)
+		case "enter":
+			if s := m.selectedStream(); s != nil {
+				m.streamTarget = s.Name
+				m.mode = modeStreamEvents
+				m.streamEvents = nil
+				m.streamEventsLoading = true
+				m.viewport.SetContent("")
+				return m, tea.Batch(m.loader.Tick(), m.loadStreamEventsCmd(m.target.Name, s.Name))
+			}
 		}
 		var cmd tea.Cmd
 		m.stTable, cmd = m.stTable.Update(msg)
+		return m, cmd
+
+	case modeStreamEvents:
+		switch msg.String() {
+		case "esc":
+			m.mode = modeStreams
+			return m, nil
+		case "r":
+			m.streamEventsLoading = true
+			m.viewport.SetContent("")
+			return m, tea.Batch(m.loader.Tick(), m.loadStreamEventsCmd(m.target.Name, m.streamTarget))
+		case "y":
+			if len(m.streamEvents) > 0 {
+				m.status = doYank(renderEvents(m.streamEvents), "stream events")
+			}
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
 
 	case modeSearch:
@@ -801,6 +882,8 @@ func (m Model) StatusFooter() statusbar.Snapshot {
 	switch m.mode {
 	case modeStreams:
 		items = len(m.streams)
+	case modeStreamEvents:
+		items = len(m.streamEvents)
 	case modeResults:
 		items = len(m.results)
 	}
@@ -817,8 +900,19 @@ func (m Model) HelpItems() []help.Section {
 		return []help.Section{{
 			Title: "CloudWatch · streams",
 			Items: []help.Item{
+				{Keys: "enter", Desc: "view stream events"},
 				{Keys: "r", Desc: "refresh"},
 				{Keys: "esc", Desc: "back to log groups"},
+			},
+		}}
+	case modeStreamEvents:
+		return []help.Section{{
+			Title: "CloudWatch · stream events",
+			Items: []help.Item{
+				{Keys: "↑/↓", Desc: "scroll"},
+				{Keys: "y", Desc: "yank all events"},
+				{Keys: "r", Desc: "reload"},
+				{Keys: "esc", Desc: "back to streams"},
 			},
 		}}
 	case modeSearch:
@@ -868,7 +962,6 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "enter", Desc: "open streams"},
 			{Keys: "t", Desc: "tail (shells out to aws logs tail)"},
 			{Keys: "s", Desc: "search via FilterLogEvents"},
-			{Keys: "m", Desc: "load next 50 groups"},
 			{Keys: "/", Desc: "filter"},
 			{Keys: "r", Desc: "refresh"},
 		},
@@ -902,6 +995,17 @@ func (m Model) selectedGroup() *LogGroup {
 	return &m.groupsFilt[idx]
 }
 
+func (m Model) selectedStream() *LogStream {
+	if len(m.streams) == 0 {
+		return nil
+	}
+	idx := m.stTable.Cursor()
+	if idx < 0 || idx >= len(m.streams) {
+		return nil
+	}
+	return &m.streams[idx]
+}
+
 func (m Model) View() string {
 	if m.err != nil {
 		hint := "Press r to retry."
@@ -913,12 +1017,24 @@ func (m Model) View() string {
 	switch m.mode {
 	case modeStreams:
 		title := headerStyle.Render("Streams: " + m.target.Name)
-		help := mutedStyle.Render("r: refresh · esc: back")
+		help := mutedStyle.Render("enter: view events · r: refresh · esc: back")
 		body := m.stTable.View()
 		if len(m.streams) == 0 {
 			body = mutedStyle.Render("(no streams)")
 		}
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help)
+	case modeStreamEvents:
+		if m.streamEventsLoading {
+			title := headerStyle.Render(m.target.Name + " / " + m.streamTarget)
+			return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("loading events..."))
+		}
+		title := headerStyle.Render(fmt.Sprintf("%s / %s · %d events", m.target.Name, m.streamTarget, len(m.streamEvents)))
+		help := mutedStyle.Render("↑/↓ scroll · y: yank · r: reload · esc: back")
+		status := ""
+		if m.status != "" {
+			status = mutedStyle.Render(m.status)
+		}
+		return lipgloss.JoinVertical(lipgloss.Left, title, "", m.viewport.View(), status, help)
 	case modeSearch:
 		title := headerStyle.Render("Search: " + m.target.Name)
 		ranges := renderRanges(m.selectedRange)
@@ -989,7 +1105,11 @@ func (m Model) View() string {
 	if len(m.groups) == 0 {
 		return mutedStyle.Render("No log groups in this region.")
 	}
-	header := headerStyle.Render(fmt.Sprintf("CloudWatch Log Groups (%d loaded)", len(m.groups)))
+	headerText := fmt.Sprintf("CloudWatch Log Groups (%d loaded)", len(m.groups))
+	if m.groupsToken != "" {
+		headerText = fmt.Sprintf("CloudWatch Log Groups (%d loaded, fetching more...)", len(m.groups))
+	}
+	header := headerStyle.Render(headerText)
 	filterLine := m.filter.View()
 	if !m.filterMode && m.filter.Value() == "" {
 		filterLine = mutedStyle.Render("press / to filter")
@@ -999,11 +1119,7 @@ func (m Model) View() string {
 		body = mutedStyle.Render("No groups match filter.")
 	}
 	help := mutedStyle.Render("enter: streams · t: tail (shells out) · s: search · /: filter · r: refresh")
-	parts := []string{header, filterLine, body, help}
-	if m.groupsToken != "" {
-		parts = append(parts, mutedStyle.Render("m: load next 50"))
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+	return lipgloss.JoinVertical(lipgloss.Left, header, filterLine, body, help)
 }
 
 func buildGroupRows(items []LogGroup) []datatable.Row {
