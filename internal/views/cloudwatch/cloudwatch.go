@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/events"
@@ -432,7 +433,7 @@ func (m Model) updateLiveTailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.refreshTailViewport(true)
 		return m, nil
 	case "y":
-		body := m.renderTailLines(m.visibleTailLines())
+		body := m.renderTailLines(m.visibleTailLines(), 0)
 		if body != "" {
 			m.status = doYank(body, "tail buffer")
 		}
@@ -534,7 +535,7 @@ func (m Model) visibleTailLines() []LogEvent {
 // refreshTailViewport rebuilds the viewport text from tailLines, optionally
 // snapping to the bottom (auto-follow).
 func (m *Model) refreshTailViewport(snapBottom bool) {
-	body := m.renderTailLines(m.visibleTailLines())
+	body := m.renderTailLines(m.visibleTailLines(), m.tailViewport.Width)
 	m.tailViewport.SetContent(body)
 	if snapBottom && !m.tailPaused {
 		m.tailViewport.GotoBottom()
@@ -544,14 +545,16 @@ func (m *Model) refreshTailViewport(snapBottom bool) {
 // renderTailLines formats a slice of events for the viewport. Mirrors
 // renderEvents but is a separate fn so we can tweak the live-tail format
 // later (eg highlight recent lines) without disturbing the search path.
-func (m Model) renderTailLines(lines []LogEvent) string {
+func (m Model) renderTailLines(lines []LogEvent, width int) string {
 	if len(lines) == 0 {
 		return ""
 	}
 	var sb strings.Builder
 	for _, e := range lines {
-		sb.WriteString(fmt.Sprintf("%s [%s] %s\n",
-			e.Time.Format("15:04:05"), shortStream(e.Stream), e.Message))
+		line := fmt.Sprintf("%s [%s] %s",
+			e.Time.Format("15:04:05"), shortStream(e.Stream), e.Message)
+		sb.WriteString(wrapLine(line, width))
+		sb.WriteString("\n")
 	}
 	return sb.String()
 }
@@ -589,6 +592,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Height = h
 		m.tailViewport.Width = msg.Width
 		m.tailViewport.Height = h - 2 // reserve a row for the status banner
+		// Re-wrap any displayed log content to the new width.
+		switch m.mode {
+		case modeStreamEvents:
+			if len(m.streamEvents) > 0 {
+				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width))
+			}
+		case modeResults:
+			if len(m.results) > 0 {
+				m.viewport.SetContent(renderEvents(m.results, m.viewport.Width))
+			}
+		case modeLiveTail:
+			m.refreshTailViewport(false)
+		}
 		return m, nil
 
 	case groupsLoadedMsg:
@@ -616,7 +632,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamEventsLoadedMsg:
 		m.streamEventsLoading = false
 		m.streamEvents = msg.events
-		m.viewport.SetContent(renderEvents(m.streamEvents))
+		m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width))
 		m.viewport.GotoBottom()
 		return m, nil
 
@@ -662,7 +678,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case searchDoneMsg:
 		m.searchLoading = false
 		m.results = msg.events
-		m.viewport.SetContent(renderEvents(m.results))
+		m.viewport.SetContent(renderEvents(m.results, m.viewport.Width))
 		m.viewport.GotoTop()
 		more := ""
 		if msg.more {
@@ -746,7 +762,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(m.loader.Tick(), m.loadStreamEventsCmd(m.target.Name, m.streamTarget))
 		case "y":
 			if len(m.streamEvents) > 0 {
-				m.status = doYank(renderEvents(m.streamEvents), "stream events")
+				m.status = doYank(renderEvents(m.streamEvents, 0), "stream events")
 			}
 			return m, nil
 		}
@@ -784,7 +800,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "y":
 			if len(m.results) > 0 {
-				m.status = doYank(renderEvents(m.results), "all matches")
+				m.status = doYank(renderEvents(m.results, 0), "all matches")
 			}
 			return m, nil
 		}
@@ -1142,16 +1158,28 @@ func buildStreamRows(items []LogStream) []datatable.Row {
 	return rows
 }
 
-func renderEvents(events []LogEvent) string {
+func renderEvents(events []LogEvent, width int) string {
 	if len(events) == 0 {
 		return mutedStyle.Render("(no matches)")
 	}
 	var sb strings.Builder
 	for _, e := range events {
-		sb.WriteString(fmt.Sprintf("%s [%s] %s\n",
-			e.Time.Format("15:04:05"), shortStream(e.Stream), e.Message))
+		line := fmt.Sprintf("%s [%s] %s",
+			e.Time.Format("15:04:05"), shortStream(e.Stream), e.Message)
+		sb.WriteString(wrapLine(line, width))
+		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+// wrapLine word-wraps s to width. Falls back to a hard break inside a
+// long token (URLs, base64, JSON without whitespace) so a single big
+// token can't blow past the viewport edge. width <= 0 disables wrap.
+func wrapLine(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	return ansi.Wrap(s, width, " -")
 }
 
 func shortStream(s string) string {
