@@ -365,6 +365,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			valH = 4
 		}
 		m.valueInput.SetHeight(valH)
+		valW := msg.Width - 4
+		if valW < 20 {
+			valW = 20
+		}
+		m.valueInput.SetWidth(valW)
+		m.descInput.Width = valW
+		m.nameInput.Width = valW
+		m.kmsKeyInput.Width = valW
+		m.confirm.Width = valW
 		// Value viewport: reserve room for title (1) + blank (1) +
 		// metadata (~6) + blank (1) + label (1) + box border (2) +
 		// help (1) + status (1) ≈ 14 lines.
