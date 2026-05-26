@@ -130,14 +130,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// tab/shift+tab are the universal escape hatch: they always cycle
-		// dashboard tabs even from inside a focused input or sub-screen.
-		switch msg.String() {
-		case "tab":
-			return m.switchTab((m.active + 1) % Tab(len(m.tabs)))
-		case "shift+tab":
-			return m.switchTab((m.active - 1 + Tab(len(m.tabs))) % Tab(len(m.tabs)))
-		}
 		capInput := false
 		if c, ok := m.tabs[m.active].(inputCaptor); ok {
 			capInput = c.CapturingInput()
@@ -145,6 +137,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		inSubnav := false
 		if s, ok := m.tabs[m.active].(subnavCaptor); ok {
 			inSubnav = s.InSubnav()
+		}
+		// tab/shift+tab cycle dashboard tabs, but only when the active tab
+		// is not capturing text input. Inside a form (paramstore edit,
+		// cloudwatch search, rds port-forward, etc.) tab must reach the
+		// view so it can cycle form fields. To switch dashboard tabs from
+		// inside a form, esc out first.
+		if !capInput {
+			switch msg.String() {
+			case "tab":
+				return m.switchTab((m.active + 1) % Tab(len(m.tabs)))
+			case "shift+tab":
+				return m.switchTab((m.active - 1 + Tab(len(m.tabs))) % Tab(len(m.tabs)))
+			}
 		}
 		// Left/right arrows also cycle tabs, but only when the active tab is
 		// on its root list and not capturing text input. In a sub-screen or

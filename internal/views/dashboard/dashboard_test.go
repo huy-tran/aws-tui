@@ -111,14 +111,31 @@ func TestArrowKeysPassThroughInSubnav(t *testing.T) {
 	}
 }
 
-func TestTabKeyAlwaysSwitchesAsEscapeHatch(t *testing.T) {
+func TestTabSwitchesTabsWhenNotCapturing(t *testing.T) {
+	// In a sub-screen without input capture, tab still cycles dashboard
+	// tabs - the active view (e.g. paramstore modeValue) has no form to
+	// navigate, so tab is free.
 	m, stubs := newTestModel()
-	stubs[TabBeanstalk].capturing = true
 	stubs[TabBeanstalk].subnav = true
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	if got := updated.(Model).active; got != TabEC2 {
-		t.Fatalf("expected tab to switch tabs as escape hatch, got active=%v", got)
+		t.Fatalf("expected tab to switch tabs in subnav-without-capture, got active=%v", got)
+	}
+}
+
+func TestTabPassesThroughWhileCapturing(t *testing.T) {
+	// Once an input is focused (paramstore edit form, cloudwatch search
+	// pattern, etc.) tab must reach the view so it can cycle form fields.
+	m, stubs := newTestModel()
+	stubs[TabBeanstalk].capturing = true
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if got := updated.(Model).active; got != TabBeanstalk {
+		t.Fatalf("expected active to stay TabBeanstalk while capturing, got active=%v", got)
+	}
+	if len(stubs[TabBeanstalk].keys) != 1 || stubs[TabBeanstalk].keys[0] != "tab" {
+		t.Fatalf("expected 'tab' delivered to active tab, got %v", stubs[TabBeanstalk].keys)
 	}
 }
 

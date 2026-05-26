@@ -13,6 +13,7 @@ import (
 	ssmsdk "github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -134,6 +135,23 @@ type Model struct {
 	confirm     textinput.Model
 	typeChoice  int // 0=String 1=StringList 2=SecureString
 	focusIdx    formField
+
+	// In-edit text search. findEditMode flips the bottom row of the edit
+	// view into a search prompt; findEditMatches caches (row, col) pairs
+	// in the textarea's underlying value so n/N navigation can hop the
+	// textarea cursor without re-scanning.
+	findEditMode    bool
+	findEditInput   textinput.Model
+	findEditMatches []findMatch
+	findEditCursor  int
+}
+
+// findMatch is a position inside the textarea's logical value (rows split
+// on '\n'). Col is a byte offset into that row, not a rune offset - this
+// matches what textarea.SetCursor expects.
+type findMatch struct {
+	Row int
+	Col int
 }
 
 func New(ctx *awspkg.Context) Model {
@@ -162,6 +180,13 @@ func New(ctx *awspkg.Context) Model {
 	value := textarea.New()
 	value.Placeholder = "value"
 	value.SetHeight(8)
+	// Add alternate newline bindings so users whose terminal swallows plain
+	// 'enter' (or who reach for shift+enter / alt+enter habitually from
+	// chat apps and IDEs) still get a newline.
+	value.KeyMap.InsertNewline = key.NewBinding(
+		key.WithKeys("enter", "ctrl+m", "ctrl+j", "shift+enter", "alt+enter"),
+		key.WithHelp("enter / shift+enter", "insert newline"),
+	)
 
 	desc := textinput.New()
 	desc.Placeholder = "description (optional)"
@@ -179,6 +204,11 @@ func New(ctx *awspkg.Context) Model {
 	confirm.Placeholder = "type the parameter name to confirm"
 	confirm.CharLimit = 1024
 
+	findFlt := textinput.New()
+	findFlt.Placeholder = "find in value"
+	findFlt.CharLimit = 256
+	findFlt.Prompt = "/ "
+
 	vp := viewport.New(0, 0)
 
 	return Model{
@@ -191,6 +221,7 @@ func New(ctx *awspkg.Context) Model {
 		nameInput:     name,
 		kmsKeyInput:   kms,
 		confirm:       confirm,
+		findEditInput: findFlt,
 		valueViewport: vp,
 		loader:        loader.New(),
 		loading:       true,
@@ -374,6 +405,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.nameInput.Width = valW
 		m.kmsKeyInput.Width = valW
 		m.confirm.Width = valW
+		m.findEditInput.Width = valW
 		// Value viewport: reserve room for title (1) + blank (1) +
 		// metadata (~6) + blank (1) + label (1) + box border (2) +
 		// help (1) + status (1) ≈ 14 lines.
@@ -714,6 +746,33 @@ func (m *Model) enterEditFromTarget() {
 }
 
 func (m Model) updateEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.findEditMode {
+		switch msg.String() {
+		case "esc":
+			m.findEditMode = false
+			m.findEditInput.Blur()
+			m.findEditInput.SetValue("")
+			m.findEditMatches = nil
+			m.findEditCursor = 0
+			m.applyEditFocus()
+			return m, nil
+		case "enter":
+			m.applyFindEditQuery()
+			m.jumpToCurrentMatch()
+			// Exit the find input but keep matches for ctrl+n / ctrl+p
+			// navigation, and refocus the textarea so the user can
+			// resume editing at the jump point.
+			m.findEditMode = false
+			m.findEditInput.Blur()
+			m.applyEditFocus()
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.findEditInput, cmd = m.findEditInput.Update(msg)
+		m.applyFindEditQuery()
+		return m, cmd
+	}
+
 	switch msg.String() {
 	case "esc":
 		m.mode = modeValue
@@ -741,6 +800,27 @@ func (m Model) updateEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			ssmtypes.ParameterType(m.target.Type),
 			true,
 		)
+	case "ctrl+f":
+		m.findEditMode = true
+		m.valueInput.Blur()
+		m.descInput.Blur()
+		m.findEditInput.SetValue("")
+		m.findEditMatches = nil
+		m.findEditCursor = 0
+		m.findEditInput.Focus()
+		return m, textinput.Blink
+	case "ctrl+n":
+		if len(m.findEditMatches) > 0 {
+			m.findEditCursor = (m.findEditCursor + 1) % len(m.findEditMatches)
+			m.jumpToCurrentMatch()
+		}
+		return m, nil
+	case "ctrl+p":
+		if len(m.findEditMatches) > 0 {
+			m.findEditCursor = (m.findEditCursor - 1 + len(m.findEditMatches)) % len(m.findEditMatches)
+			m.jumpToCurrentMatch()
+		}
+		return m, nil
 	case "tab":
 		m.focusIdx = (m.focusIdx + 1) % 2
 		m.applyEditFocus()
@@ -751,6 +831,72 @@ func (m Model) updateEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, textinput.Blink
 	}
 	return m.routeEditTyping(msg)
+}
+
+// applyFindEditQuery recomputes findEditMatches from the current textarea
+// value and the latest input. Called on every keystroke in findEditMode so
+// the match count tracks live.
+func (m *Model) applyFindEditQuery() {
+	q := strings.TrimSpace(m.findEditInput.Value())
+	if q == "" {
+		m.findEditMatches = nil
+		m.findEditCursor = 0
+		return
+	}
+	m.findEditMatches = findInValue(m.valueInput.Value(), q)
+	if m.findEditCursor >= len(m.findEditMatches) {
+		m.findEditCursor = 0
+	}
+}
+
+// jumpToCurrentMatch positions the textarea cursor on the active match.
+// Brute-forces row navigation by stepping CursorUp/Down because the
+// textarea has no public SetRow.
+func (m *Model) jumpToCurrentMatch() {
+	if len(m.findEditMatches) == 0 {
+		return
+	}
+	if m.findEditCursor < 0 || m.findEditCursor >= len(m.findEditMatches) {
+		m.findEditCursor = 0
+	}
+	target := m.findEditMatches[m.findEditCursor]
+	// Walk the textarea cursor to the target row.
+	guard := len(strings.Split(m.valueInput.Value(), "\n")) + 4
+	for m.valueInput.Line() > target.Row && guard > 0 {
+		m.valueInput.CursorUp()
+		guard--
+	}
+	for m.valueInput.Line() < target.Row && guard > 0 {
+		m.valueInput.CursorDown()
+		guard--
+	}
+	m.valueInput.SetCursor(target.Col)
+}
+
+// findInValue scans value (split on '\n') for case-insensitive matches of
+// query and returns each hit as a (row, col) byte offset. ASCII-safe; on
+// non-ASCII text the offsets remain byte-aligned which is what
+// textarea.SetCursor expects.
+func findInValue(value, query string) []findMatch {
+	if query == "" {
+		return nil
+	}
+	lines := strings.Split(value, "\n")
+	needle := strings.ToLower(query)
+	var out []findMatch
+	for r, line := range lines {
+		lower := strings.ToLower(line)
+		start := 0
+		for start <= len(lower) {
+			idx := strings.Index(lower[start:], needle)
+			if idx < 0 {
+				break
+			}
+			out = append(out, findMatch{Row: r, Col: start + idx})
+			start += idx + len(needle)
+		}
+	}
+	return out
 }
 
 func (m *Model) applyEditFocus() {
@@ -897,6 +1043,9 @@ func (m Model) CapturingInput() bool {
 	if m.mode == modeList && m.filterMode {
 		return true
 	}
+	if m.mode == modeEdit && m.findEditMode {
+		return true
+	}
 	return m.mode == modeEdit ||
 		m.mode == modeEditConfirmProd ||
 		m.mode == modeCreate
@@ -958,10 +1107,23 @@ func (m Model) HelpItems() []help.Section {
 			},
 		}}
 	case modeEdit:
+		if m.findEditMode {
+			return []help.Section{{
+				Title: "Parameter Store · find in value",
+				Items: []help.Item{
+					{Keys: "type", Desc: "live match count"},
+					{Keys: "enter", Desc: "jump to first match and back to editing"},
+					{Keys: "esc", Desc: "cancel search"},
+				},
+			}}
+		}
 		return []help.Section{{
 			Title: "Parameter Store · edit",
 			Items: []help.Item{
+				{Keys: "enter / shift+enter", Desc: "insert newline (when value is focused)"},
 				{Keys: "tab", Desc: "next field (value / description)"},
+				{Keys: "ctrl+f", Desc: "find in value"},
+				{Keys: "ctrl+n / ctrl+p", Desc: "next / prev match"},
 				{Keys: "ctrl+s", Desc: "save (prod paths require name-typed confirm)"},
 				{Keys: "esc", Desc: "cancel"},
 			},
@@ -1315,15 +1477,28 @@ func (m Model) viewEdit() string {
 		field("Type", m.target.Type+typeImmutableHint()),
 		field("Current ver", strconv.FormatInt(m.target.Version, 10)),
 	}, "\n")
-	help := mutedStyle.Render("tab: switch field · ctrl+s: save · esc: cancel")
+	help := mutedStyle.Render("tab: switch field · ctrl+f: find · ctrl+n/p: next/prev match · ctrl+s: save · esc: cancel")
+	valueLabel := focusLabel("New value", m.focusIdx == 0)
+	if q := strings.TrimSpace(m.findEditInput.Value()); q != "" {
+		if len(m.findEditMatches) > 0 {
+			valueLabel += fmt.Sprintf("  match %d/%d for %q", m.findEditCursor+1, len(m.findEditMatches), q)
+		} else {
+			valueLabel += fmt.Sprintf("  no match for %q", q)
+		}
+	}
 	parts := []string{
 		title, "", meta, "",
-		mutedStyle.Render(focusLabel("New value", m.focusIdx == 0)),
+		mutedStyle.Render(valueLabel),
 		m.valueInput.View(),
+	}
+	if m.findEditMode {
+		parts = append(parts, m.findEditInput.View())
+	}
+	parts = append(parts,
 		mutedStyle.Render(focusLabel("Description (optional)", m.focusIdx == 1)),
 		m.descInput.View(),
 		help,
-	}
+	)
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))
 	}
