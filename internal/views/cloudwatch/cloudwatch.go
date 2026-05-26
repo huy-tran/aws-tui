@@ -433,7 +433,7 @@ func (m Model) updateLiveTailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.refreshTailViewport(true)
 		return m, nil
 	case "y":
-		body := m.renderTailLines(m.visibleTailLines(), 0)
+		body := m.renderTailLines(m.visibleTailLines(), 0, false)
 		if body != "" {
 			m.status = doYank(body, "tail buffer")
 		}
@@ -535,7 +535,7 @@ func (m Model) visibleTailLines() []LogEvent {
 // refreshTailViewport rebuilds the viewport text from tailLines, optionally
 // snapping to the bottom (auto-follow).
 func (m *Model) refreshTailViewport(snapBottom bool) {
-	body := m.renderTailLines(m.visibleTailLines(), m.tailViewport.Width)
+	body := m.renderTailLines(m.visibleTailLines(), m.tailViewport.Width, true)
 	m.tailViewport.SetContent(body)
 	if snapBottom && !m.tailPaused {
 		m.tailViewport.GotoBottom()
@@ -545,15 +545,13 @@ func (m *Model) refreshTailViewport(snapBottom bool) {
 // renderTailLines formats a slice of events for the viewport. Mirrors
 // renderEvents but is a separate fn so we can tweak the live-tail format
 // later (eg highlight recent lines) without disturbing the search path.
-func (m Model) renderTailLines(lines []LogEvent, width int) string {
+func (m Model) renderTailLines(lines []LogEvent, width int, colorize bool) string {
 	if len(lines) == 0 {
 		return ""
 	}
 	var sb strings.Builder
 	for _, e := range lines {
-		line := fmt.Sprintf("%s [%s] %s",
-			e.Time.Format("15:04:05"), shortStream(e.Stream), e.Message)
-		sb.WriteString(wrapLine(line, width))
+		sb.WriteString(wrapLine(formatLogLine(e, colorize), width))
 		sb.WriteString("\n")
 	}
 	return sb.String()
@@ -596,11 +594,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.mode {
 		case modeStreamEvents:
 			if len(m.streamEvents) > 0 {
-				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width))
+				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
 			}
 		case modeResults:
 			if len(m.results) > 0 {
-				m.viewport.SetContent(renderEvents(m.results, m.viewport.Width))
+				m.viewport.SetContent(renderEvents(m.results, m.viewport.Width, true))
 			}
 		case modeLiveTail:
 			m.refreshTailViewport(false)
@@ -632,7 +630,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamEventsLoadedMsg:
 		m.streamEventsLoading = false
 		m.streamEvents = msg.events
-		m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width))
+		m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
 		m.viewport.GotoBottom()
 		return m, nil
 
@@ -678,7 +676,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case searchDoneMsg:
 		m.searchLoading = false
 		m.results = msg.events
-		m.viewport.SetContent(renderEvents(m.results, m.viewport.Width))
+		m.viewport.SetContent(renderEvents(m.results, m.viewport.Width, true))
 		m.viewport.GotoTop()
 		more := ""
 		if msg.more {
@@ -762,7 +760,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(m.loader.Tick(), m.loadStreamEventsCmd(m.target.Name, m.streamTarget))
 		case "y":
 			if len(m.streamEvents) > 0 {
-				m.status = doYank(renderEvents(m.streamEvents, 0), "stream events")
+				m.status = doYank(renderEvents(m.streamEvents, 0, false), "stream events")
 			}
 			return m, nil
 		}
@@ -800,7 +798,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "y":
 			if len(m.results) > 0 {
-				m.status = doYank(renderEvents(m.results, 0), "all matches")
+				m.status = doYank(renderEvents(m.results, 0, false), "all matches")
 			}
 			return m, nil
 		}
@@ -1158,18 +1156,29 @@ func buildStreamRows(items []LogStream) []datatable.Row {
 	return rows
 }
 
-func renderEvents(events []LogEvent, width int) string {
+func renderEvents(events []LogEvent, width int, colorize bool) string {
 	if len(events) == 0 {
 		return mutedStyle.Render("(no matches)")
 	}
 	var sb strings.Builder
 	for _, e := range events {
-		line := fmt.Sprintf("%s [%s] %s",
-			e.Time.Format("15:04:05"), shortStream(e.Stream), e.Message)
-		sb.WriteString(wrapLine(line, width))
+		sb.WriteString(wrapLine(formatLogLine(e, colorize), width))
 		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+// formatLogLine assembles a single log line. When colorize is true the
+// timestamp, stream tag, and any embedded log-level keywords are styled;
+// when false it returns a plain string suitable for clipboard yank.
+func formatLogLine(e LogEvent, colorize bool) string {
+	ts := e.Time.Format("15:04:05")
+	stream := "[" + shortStream(e.Stream) + "]"
+	msg := e.Message
+	if colorize {
+		return logTimeStyle.Render(ts) + " " + logStreamStyle.Render(stream) + " " + colorizeMessage(msg)
+	}
+	return ts + " " + stream + " " + msg
 }
 
 // wrapLine word-wraps s to width. Falls back to a hard break inside a
@@ -1257,4 +1266,32 @@ var (
 	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	mutedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	headerStyle = lipgloss.NewStyle().Bold(true)
+
+	logTimeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	logStreamStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+	logErrorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
+	logWarnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	logInfoStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	logDebugStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 )
+
+// logLevelRe matches common log-level keywords as whole words. Case
+// insensitive so it picks up both ERROR and "level":"error" in JSON logs.
+// WARNING precedes WARN so the longer alternative wins.
+var logLevelRe = regexp.MustCompile(`(?i)\b(ERROR|FATAL|PANIC|WARNING|WARN|INFO|DEBUG|TRACE)\b`)
+
+func colorizeMessage(s string) string {
+	return logLevelRe.ReplaceAllStringFunc(s, func(match string) string {
+		switch strings.ToUpper(match) {
+		case "ERROR", "FATAL", "PANIC":
+			return logErrorStyle.Render(match)
+		case "WARN", "WARNING":
+			return logWarnStyle.Render(match)
+		case "INFO":
+			return logInfoStyle.Render(match)
+		case "DEBUG", "TRACE":
+			return logDebugStyle.Render(match)
+		}
+		return match
+	})
+}
