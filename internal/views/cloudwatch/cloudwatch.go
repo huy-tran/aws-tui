@@ -135,6 +135,15 @@ type Model struct {
 	streamEvents        []LogEvent
 	streamEventsLoading bool
 
+	// In-page search state for modeStreamEvents. findMatches stores the
+	// visual line offset where each matching event starts in the wrapped
+	// viewport content; findCursor is the index into that slice.
+	findInput   textinput.Model
+	findMode    bool
+	findQuery   string
+	findMatches []int
+	findCursor  int
+
 	pattern      textinput.Model
 	selectedRange timeRange
 
@@ -199,6 +208,11 @@ func New(ctx *awspkg.Context) Model {
 	tailFlt.CharLimit = 256
 	tailFlt.Prompt = "/ "
 
+	findFlt := textinput.New()
+	findFlt.Placeholder = "find in events"
+	findFlt.CharLimit = 256
+	findFlt.Prompt = "/ "
+
 	return Model{
 		ctx:             ctx,
 		groupsTable:     gT,
@@ -208,6 +222,7 @@ func New(ctx *awspkg.Context) Model {
 		viewport:        vp,
 		tailViewport:    tailVP,
 		tailFilterInput: tailFlt,
+		findInput:       findFlt,
 		selectedRange:   range1h,
 		loader:          loader.New(),
 		groupsLoading:   true,
@@ -551,7 +566,7 @@ func (m Model) renderTailLines(lines []LogEvent, width int, colorize bool) strin
 	}
 	var sb strings.Builder
 	for _, e := range lines {
-		sb.WriteString(wrapLine(formatLogLine(e, colorize), width))
+		sb.WriteString(wrapLine(formatLogLine(e, colorize, nil), width))
 		sb.WriteString("\n")
 	}
 	return sb.String()
@@ -594,7 +609,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.mode {
 		case modeStreamEvents:
 			if len(m.streamEvents) > 0 {
-				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
+				if m.findQuery != "" {
+					m.applyStreamFind()
+				} else {
+					m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
+				}
 			}
 		case modeResults:
 			if len(m.results) > 0 {
@@ -742,6 +761,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.streamEvents = nil
 				m.streamEventsLoading = true
 				m.viewport.SetContent("")
+				m.resetFind()
 				return m, tea.Batch(m.loader.Tick(), m.loadStreamEventsCmd(m.target.Name, s.Name))
 			}
 		}
@@ -750,11 +770,54 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case modeStreamEvents:
+		if m.findMode {
+			switch msg.String() {
+			case "esc":
+				m.findMode = false
+				m.findInput.Blur()
+				m.findInput.SetValue("")
+				m.findQuery = ""
+				m.findMatches = nil
+				m.findCursor = 0
+				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
+				return m, nil
+			case "enter":
+				m.findMode = false
+				m.findInput.Blur()
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.findInput, cmd = m.findInput.Update(msg)
+			m.applyStreamFind()
+			return m, cmd
+		}
 		switch msg.String() {
 		case "esc":
+			if m.findQuery != "" {
+				m.resetFind()
+				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
+				return m, nil
+			}
 			m.mode = modeStreams
 			return m, nil
+		case "/":
+			m.findMode = true
+			m.findInput.Focus()
+			return m, textinput.Blink
+		case "n":
+			if len(m.findMatches) > 0 {
+				m.findCursor = (m.findCursor + 1) % len(m.findMatches)
+				m.viewport.SetYOffset(m.findMatches[m.findCursor])
+			}
+			return m, nil
+		case "N":
+			if len(m.findMatches) > 0 {
+				m.findCursor = (m.findCursor - 1 + len(m.findMatches)) % len(m.findMatches)
+				m.viewport.SetYOffset(m.findMatches[m.findCursor])
+			}
+			return m, nil
 		case "r":
+			m.resetFind()
 			m.streamEventsLoading = true
 			m.viewport.SetContent("")
 			return m, tea.Batch(m.loader.Tick(), m.loadStreamEventsCmd(m.target.Name, m.streamTarget))
@@ -870,6 +933,9 @@ func (m Model) CapturingInput() bool {
 	if m.mode == modeLiveTail && m.tailFilterMode {
 		return true
 	}
+	if m.mode == modeStreamEvents && m.findMode {
+		return true
+	}
 	return m.mode == modeSearch
 }
 
@@ -920,9 +986,21 @@ func (m Model) HelpItems() []help.Section {
 			},
 		}}
 	case modeStreamEvents:
+		if m.findMode {
+			return []help.Section{{
+				Title: "CloudWatch · find in events",
+				Items: []help.Item{
+					{Keys: "type", Desc: "highlight matches (live)"},
+					{Keys: "enter", Desc: "apply and exit input"},
+					{Keys: "esc", Desc: "clear and exit search"},
+				},
+			}}
+		}
 		return []help.Section{{
 			Title: "CloudWatch · stream events",
 			Items: []help.Item{
+				{Keys: "/", Desc: "find (in-page search)"},
+				{Keys: "n / N", Desc: "next / prev match"},
 				{Keys: "↑/↓", Desc: "scroll"},
 				{Keys: "y", Desc: "yank all events"},
 				{Keys: "r", Desc: "reload"},
@@ -1009,6 +1087,33 @@ func (m Model) selectedGroup() *LogGroup {
 	return &m.groupsFilt[idx]
 }
 
+// applyStreamFind re-renders the viewport with current findInput value
+// and updates findMatches / findCursor. Called on every keystroke in
+// findMode so highlights track typing live.
+func (m *Model) applyStreamFind() {
+	m.findQuery = strings.TrimSpace(m.findInput.Value())
+	content, matches := renderEventsFindable(m.streamEvents, m.viewport.Width, true, m.findQuery)
+	m.viewport.SetContent(content)
+	m.findMatches = matches
+	if len(matches) == 0 {
+		m.findCursor = 0
+		return
+	}
+	if m.findCursor >= len(matches) {
+		m.findCursor = 0
+	}
+	m.viewport.SetYOffset(matches[m.findCursor])
+}
+
+func (m *Model) resetFind() {
+	m.findMode = false
+	m.findInput.Blur()
+	m.findInput.SetValue("")
+	m.findQuery = ""
+	m.findMatches = nil
+	m.findCursor = 0
+}
+
 func (m Model) selectedStream() *LogStream {
 	if len(m.streams) == 0 {
 		return nil
@@ -1042,13 +1147,26 @@ func (m Model) View() string {
 			title := headerStyle.Render(m.target.Name + " / " + m.streamTarget)
 			return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("loading events..."))
 		}
-		title := headerStyle.Render(fmt.Sprintf("%s / %s · %d events", m.target.Name, m.streamTarget, len(m.streamEvents)))
-		help := mutedStyle.Render("↑/↓ scroll · y: yank · r: reload · esc: back")
-		status := ""
-		if m.status != "" {
-			status = mutedStyle.Render(m.status)
+		titleText := fmt.Sprintf("%s / %s · %d events", m.target.Name, m.streamTarget, len(m.streamEvents))
+		if m.findQuery != "" {
+			if len(m.findMatches) > 0 {
+				titleText += fmt.Sprintf(" · match %d/%d for %q", m.findCursor+1, len(m.findMatches), m.findQuery)
+			} else {
+				titleText += fmt.Sprintf(" · no match for %q", m.findQuery)
+			}
 		}
-		return lipgloss.JoinVertical(lipgloss.Left, title, "", m.viewport.View(), status, help)
+		title := headerStyle.Render(titleText)
+		help := mutedStyle.Render("/: find · n/N: next/prev · ↑/↓ scroll · y: yank · r: reload · esc: back")
+		parts := []string{title, ""}
+		if m.findMode {
+			parts = append(parts, m.findInput.View())
+		}
+		parts = append(parts, m.viewport.View())
+		if m.status != "" {
+			parts = append(parts, mutedStyle.Render(m.status))
+		}
+		parts = append(parts, help)
+		return lipgloss.JoinVertical(lipgloss.Left, parts...)
 	case modeSearch:
 		title := headerStyle.Render("Search: " + m.target.Name)
 		ranges := renderRanges(m.selectedRange)
@@ -1157,26 +1275,60 @@ func buildStreamRows(items []LogStream) []datatable.Row {
 }
 
 func renderEvents(events []LogEvent, width int, colorize bool) string {
+	content, _ := renderEventsFindable(events, width, colorize, "")
+	return content
+}
+
+// renderEventsFindable is like renderEvents but also highlights every
+// occurrence of `query` (case-insensitive literal). Returns the rendered
+// content together with the visual line offset where each matching event
+// begins in the wrapped output; n/N navigation jumps to those offsets.
+// An empty query disables highlighting and yields a nil matches slice.
+func renderEventsFindable(events []LogEvent, width int, colorize bool, query string) (string, []int) {
 	if len(events) == 0 {
-		return mutedStyle.Render("(no matches)")
+		return mutedStyle.Render("(no matches)"), nil
+	}
+	var findRe *regexp.Regexp
+	if q := strings.TrimSpace(query); q != "" {
+		if re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(q)); err == nil {
+			findRe = re
+		}
 	}
 	var sb strings.Builder
+	var matchLines []int
+	visualLine := 0
 	for _, e := range events {
-		sb.WriteString(wrapLine(formatLogLine(e, colorize), width))
+		matched := findRe != nil && findRe.MatchString(e.Message)
+		src := formatLogLine(e, colorize, findRe)
+		wrapped := wrapLine(src, width)
+		if matched {
+			matchLines = append(matchLines, visualLine)
+		}
+		sb.WriteString(wrapped)
 		sb.WriteString("\n")
+		visualLine += strings.Count(wrapped, "\n") + 1
 	}
-	return sb.String()
+	return sb.String(), matchLines
 }
 
 // formatLogLine assembles a single log line. When colorize is true the
 // timestamp, stream tag, and any embedded log-level keywords are styled;
 // when false it returns a plain string suitable for clipboard yank.
-func formatLogLine(e LogEvent, colorize bool) string {
+// findRe, when non-nil, overrides level coloring inside the message body
+// and wraps each hit in findHighlightStyle so search matches stand out.
+func formatLogLine(e LogEvent, colorize bool, findRe *regexp.Regexp) string {
 	ts := e.Time.Format("15:04:05")
 	stream := "[" + shortStream(e.Stream) + "]"
 	msg := e.Message
+	if findRe != nil {
+		msg = findRe.ReplaceAllStringFunc(msg, func(m string) string {
+			return findHighlightStyle.Render(m)
+		})
+	} else if colorize {
+		msg = colorizeMessage(msg)
+	}
 	if colorize {
-		return logTimeStyle.Render(ts) + " " + logStreamStyle.Render(stream) + " " + colorizeMessage(msg)
+		return logTimeStyle.Render(ts) + " " + logStreamStyle.Render(stream) + " " + msg
 	}
 	return ts + " " + stream + " " + msg
 }
@@ -1273,6 +1425,7 @@ var (
 	logWarnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	logInfoStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
 	logDebugStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	findHighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color("220")).Foreground(lipgloss.Color("16")).Bold(true)
 )
 
 // logLevelRe matches common log-level keywords as whole words. Case
