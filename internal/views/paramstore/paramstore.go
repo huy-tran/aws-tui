@@ -184,6 +184,11 @@ func New(ctx *awspkg.Context) Model {
 	value := textarea.New()
 	value.Placeholder = "value"
 	value.SetHeight(8)
+	// bubbles defaults MaxHeight to 99 lines and the InsertNewline branch
+	// silently no-ops once len(value) >= MaxHeight. Parameter Store values
+	// (JSON blobs, certs, env exports) routinely exceed that, so lift the
+	// cap to the package-wide maxLines (10000) by setting it to 0.
+	value.MaxHeight = 0
 	// Add alternate newline bindings so users whose terminal swallows plain
 	// 'enter' (or who reach for shift+enter / alt+enter habitually from
 	// chat apps and IDEs) still get a newline.

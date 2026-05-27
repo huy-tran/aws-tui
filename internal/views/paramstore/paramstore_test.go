@@ -1,6 +1,7 @@
 package paramstore
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -191,6 +192,30 @@ func TestEditTextareaAcceptsEnterAsNewline(t *testing.T) {
 	got := m.valueInput.Value()
 	if !strings.Contains(got, "\n") {
 		t.Fatalf("pressing enter on focused textarea should insert a newline, got %q", got)
+	}
+}
+
+func TestEditTextareaAcceptsNewlineOnLongValues(t *testing.T) {
+	// bubbles' textarea defaults MaxHeight=99 and silently drops
+	// InsertNewline once that limit is reached. Real parameter values
+	// (large JSON blobs, etc.) blow past 99 lines, so we lift the cap
+	// in New(). Regression check: a 150-line value must still accept
+	// 'enter' as a newline.
+	m := testModel()
+	lines := make([]string, 150)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line-%d", i)
+	}
+	m.target = Parameter{Name: "/app/big", Type: "String", Value: strings.Join(lines, "\n")}
+	m.enterEditFromTarget()
+	before := m.valueInput.LineCount()
+	if before < 100 {
+		t.Fatalf("precondition: expected >=100 lines, got %d", before)
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.valueInput.LineCount() != before+1 {
+		t.Fatalf("enter should add a line even past the bubbles default cap; was %d, now %d", before, m.valueInput.LineCount())
 	}
 }
 
