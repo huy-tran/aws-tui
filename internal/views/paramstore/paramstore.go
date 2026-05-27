@@ -20,6 +20,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/huy-tran/aws-tui/internal/audit"
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
@@ -139,11 +140,14 @@ type Model struct {
 	// In-edit text search. findEditMode flips the bottom row of the edit
 	// view into a search prompt; findEditMatches caches (row, col) pairs
 	// in the textarea's underlying value so n/N navigation can hop the
-	// textarea cursor without re-scanning.
+	// textarea cursor without re-scanning. findPreview renders the value
+	// with highlighted matches in place of the textarea (textareas have
+	// no public hook for inline styling), and scrolls to the active match.
 	findEditMode    bool
 	findEditInput   textinput.Model
 	findEditMatches []findMatch
 	findEditCursor  int
+	findPreview     viewport.Model
 }
 
 // findMatch is a position inside the textarea's logical value (rows split
@@ -210,6 +214,7 @@ func New(ctx *awspkg.Context) Model {
 	findFlt.Prompt = "/ "
 
 	vp := viewport.New(0, 0)
+	findVP := viewport.New(0, 0)
 
 	return Model{
 		ctx:           ctx,
@@ -222,6 +227,7 @@ func New(ctx *awspkg.Context) Model {
 		kmsKeyInput:   kms,
 		confirm:       confirm,
 		findEditInput: findFlt,
+		findPreview:   findVP,
 		valueViewport: vp,
 		loader:        loader.New(),
 		loading:       true,
@@ -406,6 +412,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.kmsKeyInput.Width = valW
 		m.confirm.Width = valW
 		m.findEditInput.Width = valW
+		m.findPreview.Width = valW
+		m.findPreview.Height = valH
 		// Value viewport: reserve room for title (1) + blank (1) +
 		// metadata (~6) + blank (1) + label (1) + box border (2) +
 		// help (1) + status (1) ≈ 14 lines.
@@ -766,6 +774,18 @@ func (m Model) updateEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.findEditInput.Blur()
 			m.applyEditFocus()
 			return m, nil
+		case "down", "ctrl+n":
+			if len(m.findEditMatches) > 0 {
+				m.findEditCursor = (m.findEditCursor + 1) % len(m.findEditMatches)
+				m.refreshFindPreview()
+			}
+			return m, nil
+		case "up", "ctrl+p":
+			if len(m.findEditMatches) > 0 {
+				m.findEditCursor = (m.findEditCursor - 1 + len(m.findEditMatches)) % len(m.findEditMatches)
+				m.refreshFindPreview()
+			}
+			return m, nil
 		}
 		var cmd tea.Cmd
 		m.findEditInput, cmd = m.findEditInput.Update(msg)
@@ -808,6 +828,7 @@ func (m Model) updateEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.findEditMatches = nil
 		m.findEditCursor = 0
 		m.findEditInput.Focus()
+		m.refreshFindPreview()
 		return m, textinput.Blink
 	case "ctrl+n":
 		if len(m.findEditMatches) > 0 {
@@ -835,18 +856,108 @@ func (m Model) updateEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // applyFindEditQuery recomputes findEditMatches from the current textarea
 // value and the latest input. Called on every keystroke in findEditMode so
-// the match count tracks live.
+// the match count tracks live, and rebuilds the find preview viewport.
 func (m *Model) applyFindEditQuery() {
 	q := strings.TrimSpace(m.findEditInput.Value())
 	if q == "" {
 		m.findEditMatches = nil
 		m.findEditCursor = 0
+		m.findPreview.SetContent(renderValueHighlights(m.valueInput.Value(), "", -1, m.findPreview.Width))
+		m.findPreview.GotoTop()
 		return
 	}
 	m.findEditMatches = findInValue(m.valueInput.Value(), q)
 	if m.findEditCursor >= len(m.findEditMatches) {
 		m.findEditCursor = 0
 	}
+	m.refreshFindPreview()
+}
+
+// refreshFindPreview rebuilds the preview viewport content with current
+// matches highlighted and scrolls so the active match is visible.
+func (m *Model) refreshFindPreview() {
+	q := strings.TrimSpace(m.findEditInput.Value())
+	m.findPreview.SetContent(renderValueHighlights(m.valueInput.Value(), q, m.findEditCursor, m.findPreview.Width))
+	if len(m.findEditMatches) == 0 {
+		m.findPreview.GotoTop()
+		return
+	}
+	target := m.findEditMatches[m.findEditCursor]
+	// Approximate visual line of the match: count newlines preceding the
+	// match plus the wrap rows of each preceding logical line. Cheap and
+	// close enough for scroll-into-view; the highlight makes the exact
+	// position obvious.
+	off := visualLineOf(m.valueInput.Value(), target.Row, m.findPreview.Width)
+	// Center the match in the viewport when possible.
+	if h := m.findPreview.Height; h > 0 {
+		off -= h / 2
+		if off < 0 {
+			off = 0
+		}
+	}
+	m.findPreview.SetYOffset(off)
+}
+
+// renderValueHighlights returns value with every occurrence of query (case
+// insensitive) wrapped in findHighlightStyle. The match at currentIdx (if
+// >= 0) gets the brighter findCurrentStyle so the user sees which one
+// ctrl+n / ctrl+p will jump to. width drives soft wrap so the preview
+// fits the screen without horizontal scrolling.
+func renderValueHighlights(value, query string, currentIdx, width int) string {
+	if value == "" {
+		return mutedStyle.Render("(empty)")
+	}
+	if width <= 0 {
+		width = 80
+	}
+	if query == "" {
+		return ansi.Wrap(value, width, " -")
+	}
+	lower := strings.ToLower(value)
+	needle := strings.ToLower(query)
+	var b strings.Builder
+	i := 0
+	hit := 0
+	for i < len(value) {
+		idx := strings.Index(lower[i:], needle)
+		if idx < 0 {
+			b.WriteString(value[i:])
+			break
+		}
+		b.WriteString(value[i : i+idx])
+		match := value[i+idx : i+idx+len(needle)]
+		style := findHighlightStyle
+		if hit == currentIdx {
+			style = findCurrentStyle
+		}
+		b.WriteString(style.Render(match))
+		i = i + idx + len(needle)
+		hit++
+	}
+	return ansi.Wrap(b.String(), width, " -")
+}
+
+// visualLineOf returns the count of wrapped visual rows that precede the
+// given logical row in value when wrapped at width. Used by the find
+// preview viewport to scroll the active match into view.
+func visualLineOf(value string, row, width int) int {
+	if row <= 0 || width <= 0 {
+		return 0
+	}
+	lines := strings.Split(value, "\n")
+	if row >= len(lines) {
+		row = len(lines) - 1
+	}
+	total := 0
+	for i := 0; i < row; i++ {
+		w := lipgloss.Width(lines[i])
+		if w == 0 {
+			total++
+			continue
+		}
+		total += (w + width - 1) / width
+	}
+	return total
 }
 
 // jumpToCurrentMatch positions the textarea cursor on the active match.
@@ -1477,8 +1588,13 @@ func (m Model) viewEdit() string {
 		field("Type", m.target.Type+typeImmutableHint()),
 		field("Current ver", strconv.FormatInt(m.target.Version, 10)),
 	}, "\n")
-	help := mutedStyle.Render("tab: switch field · ctrl+f: find · ctrl+n/p: next/prev match · ctrl+s: save · esc: cancel")
-	valueLabel := focusLabel("New value", m.focusIdx == 0)
+	help := mutedStyle.Render("enter / ctrl+j: newline · tab: switch field · ctrl+f: find · ctrl+n/p: next match · ctrl+s: save · esc: cancel")
+	valueLabel := focusLabel("New value", m.focusIdx == 0 && !m.findEditMode)
+	// Diagnostic suffix: shows the current cursor position and total
+	// logical lines. If pressing enter doesn't bump "lines" the keymsg
+	// never reached the textarea - useful while debugging terminals that
+	// swallow specific key codes.
+	valueLabel += fmt.Sprintf("  (lines %d · cursor row %d)", m.valueInput.LineCount(), m.valueInput.Line()+1)
 	if q := strings.TrimSpace(m.findEditInput.Value()); q != "" {
 		if len(m.findEditMatches) > 0 {
 			valueLabel += fmt.Sprintf("  match %d/%d for %q", m.findEditCursor+1, len(m.findEditMatches), q)
@@ -1489,13 +1605,23 @@ func (m Model) viewEdit() string {
 	parts := []string{
 		title, "", meta, "",
 		mutedStyle.Render(valueLabel),
-		m.valueInput.View(),
 	}
 	if m.findEditMode {
-		parts = append(parts, m.findEditInput.View())
+		// Replace the textarea with a highlighted preview while finding.
+		// The textarea has no inline-style hook, so this is the only way
+		// to make matches visible. Enter switches back to the textarea
+		// positioned at the active match.
+		previewBox := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1).
+			Render(m.findPreview.View())
+		parts = append(parts, previewBox, m.findEditInput.View())
+	} else {
+		parts = append(parts, m.valueInput.View())
 	}
 	parts = append(parts,
-		mutedStyle.Render(focusLabel("Description (optional)", m.focusIdx == 1)),
+		mutedStyle.Render(focusLabel("Description (optional)", m.focusIdx == 1 && !m.findEditMode)),
 		m.descInput.View(),
 		help,
 	)
@@ -1597,4 +1723,9 @@ var (
 	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	mutedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	headerStyle = lipgloss.NewStyle().Bold(true)
+	// findHighlightStyle paints every match while the find prompt is open;
+	// findCurrentStyle is the brighter "this is where enter will jump"
+	// variant for the active match.
+	findHighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color("220")).Foreground(lipgloss.Color("16"))
+	findCurrentStyle   = lipgloss.NewStyle().Background(lipgloss.Color("208")).Foreground(lipgloss.Color("16")).Bold(true)
 )

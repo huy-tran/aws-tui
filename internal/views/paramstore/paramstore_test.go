@@ -176,6 +176,64 @@ func TestYankWorksOnMaskedValue(t *testing.T) {
 	}
 }
 
+func TestEditTextareaAcceptsEnterAsNewline(t *testing.T) {
+	m := testModel()
+	m.target = Parameter{Name: "/app/foo", Type: "String", Value: "line1"}
+	m.enterEditFromTarget()
+	if got := m.valueInput.Value(); got != "line1" {
+		t.Fatalf("precondition: value should be 'line1', got %q", got)
+	}
+	if !m.valueInput.Focused() {
+		t.Fatalf("precondition: value textarea must be focused after enterEditFromTarget")
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	got := m.valueInput.Value()
+	if !strings.Contains(got, "\n") {
+		t.Fatalf("pressing enter on focused textarea should insert a newline, got %q", got)
+	}
+}
+
+func TestEditEnterAfterFindFlowStillInsertsNewline(t *testing.T) {
+	// User opens find with ctrl+f, types a query, presses enter to jump
+	// out of find mode, then expects enter to insert a newline in the
+	// textarea. This exercises the focus handoff between findInput and
+	// valueInput across modes.
+	m := testModel()
+	m.target = Parameter{Name: "/app/foo", Type: "String", Value: "hello world"}
+	m.enterEditFromTarget()
+
+	// Open find.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
+	m = updated.(Model)
+	if !m.findEditMode || !m.findEditInput.Focused() {
+		t.Fatalf("ctrl+f should enter findEditMode with findInput focused")
+	}
+	// Type the query.
+	for _, r := range "world" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(Model)
+	}
+	if len(m.findEditMatches) == 0 {
+		t.Fatalf("expected at least one match for 'world' in 'hello world'")
+	}
+	// Press enter to jump and exit find.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.findEditMode {
+		t.Fatalf("enter should exit findEditMode")
+	}
+	if !m.valueInput.Focused() {
+		t.Fatalf("after exiting find, value textarea should be focused, got focused=%v", m.valueInput.Focused())
+	}
+	// Press enter again - should insert newline into the textarea.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if !strings.Contains(m.valueInput.Value(), "\n") {
+		t.Fatalf("enter after find-exit should insert newline, got value %q", m.valueInput.Value())
+	}
+}
+
 func TestParamstoreParametersLoaded(t *testing.T) {
 	m := testModel()
 	updated, _ := m.Update(parametersLoadedMsg{items: []Parameter{
