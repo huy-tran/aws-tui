@@ -15,6 +15,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/huy-tran/aws-tui/internal/audit"
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/nav"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
@@ -55,6 +56,27 @@ type Instance struct {
 type loadedMsg struct{ instances []Instance }
 type errMsg struct{ err error }
 
+// powerAction is the verb passed to the ec2 SDK for stop/start/reboot.
+// Stored as a string so it doubles as the audit action suffix and the
+// label in the confirmation prompt.
+type powerAction string
+
+const (
+	actionStop   powerAction = "stop"
+	actionStart  powerAction = "start"
+	actionReboot powerAction = "reboot"
+)
+
+// powerDoneMsg comes back from the goroutine that runs the SDK call. err
+// non-nil = the API rejected the request; dryRun = audit dry-run mode
+// intercepted the call before it hit AWS.
+type powerDoneMsg struct {
+	action powerAction
+	target string
+	err    error
+	dryRun bool
+}
+
 type Model struct {
 	ctx        *awspkg.Context
 	table      datatable.Model
@@ -69,6 +91,15 @@ type Model struct {
 	height     int
 	lastLoaded time.Time
 	status     string
+
+	// Power action confirmation state. pendingAction != "" means the
+	// list view is overlayed by a confirm prompt waiting on the user
+	// to type the target instance ID. Inflight is true once the SDK
+	// call is on the wire; the spinner shares loader.
+	pendingAction powerAction
+	pendingTarget Instance
+	confirmInput  textinput.Model
+	actionInFlight bool
 }
 
 func New(ctx *awspkg.Context) Model {
@@ -87,12 +118,17 @@ func New(ctx *awspkg.Context) Model {
 	ti.CharLimit = 64
 	ti.Prompt = "/ "
 
+	confirm := textinput.New()
+	confirm.Placeholder = "type the instance id to confirm"
+	confirm.CharLimit = 32
+
 	return Model{
-		ctx:     ctx,
-		table:   t,
-		loader:  loader.New(),
-		filter:  ti,
-		loading: true,
+		ctx:          ctx,
+		table:        t,
+		loader:       loader.New(),
+		filter:       ti,
+		confirmInput: confirm,
+		loading:      true,
 	}
 }
 
@@ -209,7 +245,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		return m, nil
 
+	case powerDoneMsg:
+		m.actionInFlight = false
+		m.pendingAction = ""
+		m.confirmInput.SetValue("")
+		m.confirmInput.Blur()
+		if msg.err != nil {
+			m.status = fmt.Sprintf("%s %s failed: %v", msg.action, msg.target, msg.err)
+			return m, nil
+		}
+		if msg.dryRun {
+			m.status = fmt.Sprintf("dry-run: %s %s", msg.action, msg.target)
+		} else {
+			m.status = fmt.Sprintf("%s requested for %s", msg.action, msg.target)
+		}
+		// Bust the cache and refresh so the State column reflects the change.
+		m.ctx.Cache.Invalidate("ec2:instances:" + m.ctx.Region)
+		m.loading = true
+		return m, tea.Batch(m.loader.Tick(), m.loadCmd(true))
+
 	case tea.KeyMsg:
+		// Power action confirm prompt: typed-ID confirmation pattern,
+		// mirrors paramstore's prod-write gate.
+		if m.pendingAction != "" {
+			switch msg.String() {
+			case "esc":
+				m.pendingAction = ""
+				m.confirmInput.SetValue("")
+				m.confirmInput.Blur()
+				m.status = ""
+				return m, nil
+			case "enter":
+				if m.confirmInput.Value() != m.pendingTarget.ID {
+					m.status = "instance id mismatch - try again or esc"
+					return m, nil
+				}
+				m.actionInFlight = true
+				m.status = fmt.Sprintf("%s requested...", m.pendingAction)
+				return m, tea.Batch(m.loader.Tick(), m.powerActionCmd(m.pendingAction, m.pendingTarget))
+			}
+			var cmd tea.Cmd
+			m.confirmInput, cmd = m.confirmInput.Update(msg)
+			return m, cmd
+		}
 		if m.filterMode {
 			switch msg.String() {
 			case "esc":
@@ -250,6 +328,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "i":
 			if inst := m.selected(); inst != nil {
 				return m, nav.PushView(newDetails(m.ctx, *inst))
+			}
+		case "S":
+			if inst := m.selected(); inst != nil {
+				m.pendingAction = actionStop
+				m.pendingTarget = *inst
+				m.confirmInput.SetValue("")
+				m.confirmInput.Focus()
+				m.status = ""
+				return m, textinput.Blink
+			}
+		case "U":
+			if inst := m.selected(); inst != nil {
+				m.pendingAction = actionStart
+				m.pendingTarget = *inst
+				m.confirmInput.SetValue("")
+				m.confirmInput.Focus()
+				m.status = ""
+				return m, textinput.Blink
+			}
+		case "R":
+			if inst := m.selected(); inst != nil {
+				m.pendingAction = actionReboot
+				m.pendingTarget = *inst
+				m.confirmInput.SetValue("")
+				m.confirmInput.Focus()
+				m.status = ""
+				return m, textinput.Blink
+			}
+		case "c":
+			if inst := m.selected(); inst != nil {
+				return m, nav.PushView(newConsole(m.ctx, *inst))
 			}
 		}
 	}
@@ -302,7 +411,7 @@ func instanceMatches(inst Instance, q string) bool {
 }
 
 func (m Model) CapturingInput() bool {
-	return m.filterMode
+	return m.filterMode || m.pendingAction != ""
 }
 
 // BookmarkCurrent surfaces the highlighted instance so the dashboard can
@@ -350,12 +459,24 @@ func (m Model) HelpItems() []help.Section {
 			},
 		}}
 	}
+	if m.pendingAction != "" {
+		return []help.Section{{
+			Title: fmt.Sprintf("EC2 · confirm %s", m.pendingAction),
+			Items: []help.Item{
+				{Keys: "type instance id", Desc: "must match exactly"},
+				{Keys: "enter", Desc: "run the action"},
+				{Keys: "esc", Desc: "cancel"},
+			},
+		}}
+	}
 	return []help.Section{{
 		Title: "EC2 instances",
 		Items: []help.Item{
 			{Keys: "enter", Desc: "SSM start-session into selected instance (bash)"},
 			{Keys: "p", Desc: "port-forward modal"},
 			{Keys: "i", Desc: "instance details"},
+			{Keys: "c", Desc: "console output"},
+			{Keys: "S / U / R", Desc: "stop / start (up) / reboot (confirm required)"},
 			{Keys: "/", Desc: "filter"},
 			{Keys: "r", Desc: "refresh (invalidates cache)"},
 			{Keys: "↑/↓ j/k", Desc: "move cursor"},
@@ -373,6 +494,45 @@ func (m Model) selected() *Instance {
 		return nil
 	}
 	return &m.displayed[idx]
+}
+
+// powerActionCmd dispatches Stop/Start/RebootInstances for the target
+// instance, routed through audit. Returns a powerDoneMsg so the Update
+// handler can resync the cache and surface the outcome.
+func (m Model) powerActionCmd(action powerAction, target Instance) tea.Cmd {
+	ctx := m.ctx
+	return func() tea.Msg {
+		sdkAction := "ec2:" + strings.Title(string(action)) + "Instances"
+		a := audit.Action{
+			Profile: ctx.Profile,
+			Region:  ctx.Region,
+			Action:  sdkAction,
+			Target:  target.ID,
+			Payload: map[string]any{"name": target.Name, "state_before": target.State},
+		}
+		if audit.IsDryRun() {
+			audit.Log(a, true, "")
+			return powerDoneMsg{action: action, target: target.ID, dryRun: true}
+		}
+		if err := ctx.Load(context.Background()); err != nil {
+			return powerDoneMsg{action: action, target: target.ID, err: err}
+		}
+		client := ctx.EC2()
+		ids := []string{target.ID}
+		var err error
+		switch action {
+		case actionStop:
+			_, err = client.StopInstances(context.Background(), &ec2sdk.StopInstancesInput{InstanceIds: ids})
+		case actionStart:
+			_, err = client.StartInstances(context.Background(), &ec2sdk.StartInstancesInput{InstanceIds: ids})
+		case actionReboot:
+			_, err = client.RebootInstances(context.Background(), &ec2sdk.RebootInstancesInput{InstanceIds: ids})
+		default:
+			err = fmt.Errorf("unknown action %q", action)
+		}
+		audit.Log(a, false, "")
+		return powerDoneMsg{action: action, target: target.ID, err: err}
+	}
 }
 
 func (m Model) startSSMSession(inst Instance) tea.Cmd {
@@ -415,7 +575,7 @@ func (m Model) View() string {
 		filterLine = mutedStyle.Render("press / to filter")
 	}
 
-	help := mutedStyle.Render("enter: SSM · p: port forward · i: details · r: refresh · /: filter")
+	help := mutedStyle.Render("enter: SSM · p: port forward · i: details · c: console · S/U/R: stop/start/reboot · r: refresh · /: filter")
 
 	body := m.table.View()
 	if len(m.displayed) == 0 {
@@ -426,7 +586,31 @@ func (m Model) View() string {
 		}
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, filterLine, body, help)
+	parts := []string{header, filterLine, body, help}
+	if m.pendingAction != "" {
+		// Confirmation overlay (rendered inline below the list). Border
+		// makes it obvious the focus moved here and esc/enter are the
+		// only meaningful keys.
+		prompt := fmt.Sprintf("Confirm %s of %s", m.pendingAction, m.pendingTarget.ID)
+		if m.pendingTarget.Name != "" {
+			prompt += " (" + m.pendingTarget.Name + ")"
+		}
+		box := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("214")).
+			Padding(0, 1).
+			Render(lipgloss.JoinVertical(lipgloss.Left,
+				errorStyle.Render(prompt),
+				"Type the instance ID to confirm:",
+				m.confirmInput.View(),
+				mutedStyle.Render("enter: run · esc: cancel"),
+			))
+		parts = append(parts, box)
+	}
+	if m.status != "" {
+		parts = append(parts, mutedStyle.Render(m.status))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
 func (m Model) renderListHeader() string {
