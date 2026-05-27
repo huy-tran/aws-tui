@@ -353,7 +353,7 @@ func (m Model) HelpItems() []help.Section {
 	return []help.Section{{
 		Title: "EC2 instances",
 		Items: []help.Item{
-			{Keys: "enter", Desc: "SSM start-session into selected instance"},
+			{Keys: "enter", Desc: "SSM start-session into selected instance (bash)"},
 			{Keys: "p", Desc: "port-forward modal"},
 			{Keys: "i", Desc: "instance details"},
 			{Keys: "/", Desc: "filter"},
@@ -376,10 +376,18 @@ func (m Model) selected() *Instance {
 }
 
 func (m Model) startSSMSession(inst Instance) tea.Cmd {
+	// Default SSM sessions drop into /bin/sh on Amazon Linux which is
+	// missing the niceties most operators expect (line editing, history,
+	// completion). Use AWS-StartInteractiveCommand to start /bin/bash
+	// directly so users don't have to type `exec /bin/bash` after every
+	// connect. Falls back gracefully on hosts where /bin/bash is missing
+	// - AWS CLI surfaces the failure and we propagate it.
 	cmd := execAWS("ssm", "start-session",
 		"--profile", m.ctx.Profile,
 		"--region", m.ctx.Region,
 		"--target", inst.ID,
+		"--document-name", "AWS-StartInteractiveCommand",
+		"--parameters", "command=/bin/bash",
 	)
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		if err != nil {
