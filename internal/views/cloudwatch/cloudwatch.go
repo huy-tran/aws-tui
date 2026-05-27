@@ -3,6 +3,7 @@ package cloudwatch
 import (
 	"context"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -151,6 +152,11 @@ type Model struct {
 	results      []LogEvent
 	resultsTitle string
 	searchLoading bool
+
+	// jsonPretty toggles JSON-aware reformatting in stream-events, search
+	// results, and live tail rendering. Messages whose trimmed form starts
+	// with '{' or '[' get json.MarshalIndent'd; everything else stays as-is.
+	jsonPretty bool
 
 	// live tail state. tailCancel is non-nil only while a pump goroutine
 	// is running; calling it tears the stream down. parked holds lines
@@ -447,6 +453,10 @@ func (m Model) updateLiveTailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.tailParked = nil
 		m.refreshTailViewport(true)
 		return m, nil
+	case "J":
+		m.jsonPretty = !m.jsonPretty
+		m.refreshTailViewport(false)
+		return m, nil
 	case "y":
 		body := m.renderTailLines(m.visibleTailLines(), 0, false)
 		if body != "" {
@@ -566,10 +576,33 @@ func (m Model) renderTailLines(lines []LogEvent, width int, colorize bool) strin
 	}
 	var sb strings.Builder
 	for _, e := range lines {
-		sb.WriteString(wrapLine(formatLogLine(e, colorize, nil), width))
+		sb.WriteString(wrapLine(formatLogLine(e, colorize, nil, m.jsonPretty), width))
 		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+// tryPrettyJSON returns s reformatted with json.MarshalIndent if it parses
+// as a JSON object or array. Anything else (plain text, partial JSON,
+// numeric/string scalars) is returned unchanged. Cheap fail path: we only
+// hand the parser strings that begin with '{' or '[' after trimming.
+func tryPrettyJSON(s string) string {
+	trimmed := strings.TrimSpace(s)
+	if len(trimmed) < 2 {
+		return s
+	}
+	if trimmed[0] != '{' && trimmed[0] != '[' {
+		return s
+	}
+	var data interface{}
+	if err := json.Unmarshal([]byte(trimmed), &data); err != nil {
+		return s
+	}
+	out, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return s
+	}
+	return string(out)
 }
 
 func (m Model) tailCmd(group string) tea.Cmd {
@@ -612,12 +645,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.findQuery != "" {
 					m.applyStreamFind()
 				} else {
-					m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
+					m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true, m.jsonPretty))
 				}
 			}
 		case modeResults:
 			if len(m.results) > 0 {
-				m.viewport.SetContent(renderEvents(m.results, m.viewport.Width, true))
+				m.viewport.SetContent(renderEvents(m.results, m.viewport.Width, true, m.jsonPretty))
 			}
 		case modeLiveTail:
 			m.refreshTailViewport(false)
@@ -649,7 +682,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamEventsLoadedMsg:
 		m.streamEventsLoading = false
 		m.streamEvents = msg.events
-		m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
+		m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true, m.jsonPretty))
 		m.viewport.GotoBottom()
 		return m, nil
 
@@ -695,7 +728,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case searchDoneMsg:
 		m.searchLoading = false
 		m.results = msg.events
-		m.viewport.SetContent(renderEvents(m.results, m.viewport.Width, true))
+		m.viewport.SetContent(renderEvents(m.results, m.viewport.Width, true, m.jsonPretty))
 		m.viewport.GotoTop()
 		more := ""
 		if msg.more {
@@ -779,7 +812,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.findQuery = ""
 				m.findMatches = nil
 				m.findCursor = 0
-				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
+				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true, m.jsonPretty))
 				return m, nil
 			case "enter":
 				m.findMode = false
@@ -795,7 +828,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			if m.findQuery != "" {
 				m.resetFind()
-				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true))
+				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true, m.jsonPretty))
 				return m, nil
 			}
 			m.mode = modeStreams
@@ -821,9 +854,17 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.streamEventsLoading = true
 			m.viewport.SetContent("")
 			return m, tea.Batch(m.loader.Tick(), m.loadStreamEventsCmd(m.target.Name, m.streamTarget))
+		case "J":
+			m.jsonPretty = !m.jsonPretty
+			if m.findQuery != "" {
+				m.applyStreamFind()
+			} else {
+				m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true, m.jsonPretty))
+			}
+			return m, nil
 		case "y":
 			if len(m.streamEvents) > 0 {
-				m.status = doYank(renderEvents(m.streamEvents, 0, false), "stream events")
+				m.status = doYank(renderEvents(m.streamEvents, 0, false, m.jsonPretty), "stream events")
 			}
 			return m, nil
 		}
@@ -859,9 +900,13 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.mode = modeSearch
 			return m, nil
+		case "J":
+			m.jsonPretty = !m.jsonPretty
+			m.viewport.SetContent(renderEvents(m.results, m.viewport.Width, true, m.jsonPretty))
+			return m, nil
 		case "y":
 			if len(m.results) > 0 {
-				m.status = doYank(renderEvents(m.results, 0, false), "all matches")
+				m.status = doYank(renderEvents(m.results, 0, false, m.jsonPretty), "all matches")
 			}
 			return m, nil
 		}
@@ -1001,6 +1046,7 @@ func (m Model) HelpItems() []help.Section {
 			Items: []help.Item{
 				{Keys: "/", Desc: "find (in-page search)"},
 				{Keys: "n / N", Desc: "next / prev match"},
+				{Keys: "J", Desc: "toggle JSON pretty-print"},
 				{Keys: "↑/↓", Desc: "scroll"},
 				{Keys: "y", Desc: "yank all events"},
 				{Keys: "r", Desc: "reload"},
@@ -1022,6 +1068,7 @@ func (m Model) HelpItems() []help.Section {
 			Title: "CloudWatch · search results",
 			Items: []help.Item{
 				{Keys: "↑/↓", Desc: "scroll"},
+				{Keys: "J", Desc: "toggle JSON pretty-print"},
 				{Keys: "y", Desc: "yank all matches"},
 				{Keys: "esc", Desc: "back to search"},
 			},
@@ -1032,6 +1079,7 @@ func (m Model) HelpItems() []help.Section {
 			Items: []help.Item{
 				{Keys: "/", Desc: "regex filter (local; stream keeps streaming)"},
 				{Keys: "p", Desc: "pause / resume auto-scroll"},
+				{Keys: "J", Desc: "toggle JSON pretty-print"},
 				{Keys: "c", Desc: "clear visible buffer"},
 				{Keys: "y", Desc: "yank visible (filtered) lines"},
 				{Keys: "esc", Desc: "stop and back to streams"},
@@ -1092,7 +1140,7 @@ func (m Model) selectedGroup() *LogGroup {
 // findMode so highlights track typing live.
 func (m *Model) applyStreamFind() {
 	m.findQuery = strings.TrimSpace(m.findInput.Value())
-	content, matches := renderEventsFindable(m.streamEvents, m.viewport.Width, true, m.findQuery)
+	content, matches := renderEventsFindable(m.streamEvents, m.viewport.Width, true, m.findQuery, m.jsonPretty)
 	m.viewport.SetContent(content)
 	m.findMatches = matches
 	if len(matches) == 0 {
@@ -1148,6 +1196,9 @@ func (m Model) View() string {
 			return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("loading events..."))
 		}
 		titleText := fmt.Sprintf("%s / %s · %d events", m.target.Name, m.streamTarget, len(m.streamEvents))
+		if m.jsonPretty {
+			titleText += " · json"
+		}
 		if m.findQuery != "" {
 			if len(m.findMatches) > 0 {
 				titleText += fmt.Sprintf(" · match %d/%d for %q", m.findCursor+1, len(m.findMatches), m.findQuery)
@@ -1156,7 +1207,7 @@ func (m Model) View() string {
 			}
 		}
 		title := headerStyle.Render(titleText)
-		help := mutedStyle.Render("/: find · n/N: next/prev · ↑/↓ scroll · y: yank · r: reload · esc: back")
+		help := mutedStyle.Render("/: find · n/N: next/prev · J: json · ↑/↓ scroll · y: yank · r: reload · esc: back")
 		parts := []string{title, ""}
 		if m.findMode {
 			parts = append(parts, m.findInput.View())
@@ -1184,8 +1235,12 @@ func (m Model) View() string {
 			title := headerStyle.Render(m.target.Name)
 			return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("searching..."))
 		}
-		title := headerStyle.Render(m.resultsTitle)
-		help := mutedStyle.Render("↑/↓ scroll · y: yank all · esc: back")
+		titleText := m.resultsTitle
+		if m.jsonPretty {
+			titleText += " · json"
+		}
+		title := headerStyle.Render(titleText)
+		help := mutedStyle.Render("↑/↓ scroll · J: json · y: yank all · esc: back")
 		status := ""
 		if m.status != "" {
 			status = mutedStyle.Render(m.status)
@@ -1274,8 +1329,8 @@ func buildStreamRows(items []LogStream) []datatable.Row {
 	return rows
 }
 
-func renderEvents(events []LogEvent, width int, colorize bool) string {
-	content, _ := renderEventsFindable(events, width, colorize, "")
+func renderEvents(events []LogEvent, width int, colorize, pretty bool) string {
+	content, _ := renderEventsFindable(events, width, colorize, "", pretty)
 	return content
 }
 
@@ -1284,7 +1339,8 @@ func renderEvents(events []LogEvent, width int, colorize bool) string {
 // content together with the visual line offset where each matching event
 // begins in the wrapped output; n/N navigation jumps to those offsets.
 // An empty query disables highlighting and yields a nil matches slice.
-func renderEventsFindable(events []LogEvent, width int, colorize bool, query string) (string, []int) {
+// pretty enables JSON pretty-printing on messages that parse as JSON.
+func renderEventsFindable(events []LogEvent, width int, colorize bool, query string, pretty bool) (string, []int) {
 	if len(events) == 0 {
 		return mutedStyle.Render("(no matches)"), nil
 	}
@@ -1299,7 +1355,7 @@ func renderEventsFindable(events []LogEvent, width int, colorize bool, query str
 	visualLine := 0
 	for _, e := range events {
 		matched := findRe != nil && findRe.MatchString(e.Message)
-		src := formatLogLine(e, colorize, findRe)
+		src := formatLogLine(e, colorize, findRe, pretty)
 		wrapped := wrapLine(src, width)
 		if matched {
 			matchLines = append(matchLines, visualLine)
@@ -1316,10 +1372,15 @@ func renderEventsFindable(events []LogEvent, width int, colorize bool, query str
 // when false it returns a plain string suitable for clipboard yank.
 // findRe, when non-nil, overrides level coloring inside the message body
 // and wraps each hit in findHighlightStyle so search matches stand out.
-func formatLogLine(e LogEvent, colorize bool, findRe *regexp.Regexp) string {
+// pretty rewrites JSON-shaped messages with json.MarshalIndent so they
+// span multiple lines instead of one long ugly blob.
+func formatLogLine(e LogEvent, colorize bool, findRe *regexp.Regexp, pretty bool) string {
 	ts := e.Time.Format("15:04:05")
 	stream := "[" + shortStream(e.Stream) + "]"
 	msg := e.Message
+	if pretty {
+		msg = tryPrettyJSON(msg)
+	}
 	if findRe != nil {
 		msg = findRe.ReplaceAllStringFunc(msg, func(m string) string {
 			return findHighlightStyle.Render(m)
