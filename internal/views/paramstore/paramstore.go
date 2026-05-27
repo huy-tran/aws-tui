@@ -1595,11 +1595,6 @@ func (m Model) viewEdit() string {
 	}, "\n")
 	help := mutedStyle.Render("enter / ctrl+j: newline · tab: switch field · ctrl+f: find · ctrl+n/p: next match · ctrl+s: save · esc: cancel")
 	valueLabel := focusLabel("New value", m.focusIdx == 0 && !m.findEditMode)
-	// Diagnostic suffix: shows the current cursor position and total
-	// logical lines. If pressing enter doesn't bump "lines" the keymsg
-	// never reached the textarea - useful while debugging terminals that
-	// swallow specific key codes.
-	valueLabel += fmt.Sprintf("  (lines %d · cursor row %d)", m.valueInput.LineCount(), m.valueInput.Line()+1)
 	if q := strings.TrimSpace(m.findEditInput.Value()); q != "" {
 		if len(m.findEditMatches) > 0 {
 			valueLabel += fmt.Sprintf("  match %d/%d for %q", m.findEditCursor+1, len(m.findEditMatches), q)
