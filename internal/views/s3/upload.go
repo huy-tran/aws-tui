@@ -374,9 +374,9 @@ func buildLocalRows(entries []localEntry, queued map[string]bool) []datatable.Ro
 		name := e.name
 		switch {
 		case e.isDir:
-			name = "  " + name + "/"
+			name = folderStyle.Render(name + "/")
 		case queued[e.path]:
-			name = "✓ " + name
+			name = queuedFileStyle.Render("✓ " + name)
 		default:
 			name = "  " + name
 		}
@@ -570,6 +570,11 @@ func (m uploadModel) viewDone(title string) string {
 func (m uploadModel) CapturingInput() bool {
 	return m.filterMode || m.stage == stageConfirming
 }
+
+var (
+	folderStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true)
+	queuedFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true)
+)
 
 func (m uploadModel) HelpItems() []help.Section {
 	switch m.stage {

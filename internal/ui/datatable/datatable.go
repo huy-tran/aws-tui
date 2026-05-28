@@ -438,7 +438,10 @@ func (m Model) View() string {
 
 	base := lipgloss.NewStyle().Padding(0, 1)
 	header := base.Bold(true).Foreground(lipgloss.Color("252"))
-	selected := base.Bold(true).Foreground(lipgloss.Color("213"))
+	// Active row uses a subtle background band so the highlight overlays
+	// on top of any per-cell foreground colouring (folders, selected
+	// markers) without clobbering it.
+	selected := base.Background(lipgloss.Color("235"))
 
 	t := ltable.New().
 		Border(lipgloss.NormalBorder()).
