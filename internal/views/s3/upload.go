@@ -109,7 +109,9 @@ func (m uploadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			h = 5
 		}
 		m.picker.SetHeight(h)
-		return m, nil
+		var cmd tea.Cmd
+		m.picker, cmd = m.picker.Update(msg)
+		return m, cmd
 
 	case headProbeDoneMsg:
 		m.exists = msg.exists
@@ -151,6 +153,12 @@ func (m uploadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.updateKeys(msg)
+	}
+	// Forward any other message (filepicker's readDirMsg etc.) to the picker.
+	if m.stage == stagePicking {
+		var cmd tea.Cmd
+		m.picker, cmd = m.picker.Update(msg)
+		return m, cmd
 	}
 	return m, nil
 }
