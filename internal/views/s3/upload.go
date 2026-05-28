@@ -261,7 +261,7 @@ func (m uploadModel) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filterMode = true
 			m.filter.Focus()
 			return m, textinput.Blink
-		case "U":
+		case "ctrl+u":
 			if len(m.queue) == 0 {
 				m.status = "queue is empty - press enter on a file to add it"
 				return m, nil
@@ -494,7 +494,7 @@ func (m uploadModel) viewPicking(title string) string {
 		}
 	}
 
-	hint := mutedStyle.Render("enter: enter dir / toggle file · /: filter · U: upload · backspace: up a dir · esc: cancel")
+	hint := mutedStyle.Render("enter: enter dir / toggle file · /: filter · ctrl+u: upload · backspace: up a dir · esc: cancel")
 
 	parts := []string{title, dirLine, filterLine, body, "", strings.Join(queueLines, "\n")}
 	if m.status != "" {
@@ -588,7 +588,7 @@ func (m uploadModel) HelpItems() []help.Section {
 				{Keys: "backspace / h", Desc: "up a directory"},
 				{Keys: "/", Desc: "filter entries"},
 				{Keys: "j/k ↓/↑", Desc: "move cursor"},
-				{Keys: "U", Desc: "upload queued files"},
+				{Keys: "ctrl+u", Desc: "upload queued files"},
 				{Keys: "esc", Desc: "cancel and return to browser"},
 			},
 		}}

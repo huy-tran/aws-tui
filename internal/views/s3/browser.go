@@ -302,7 +302,7 @@ func (m browserModel) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.yankPending = true
 		m.status = "yank: u=s3://, h=https, k=key, b=bucket"
 		return m, nil
-	case "U":
+	case "ctrl+u":
 		return m, nav.PushView(newUpload(m.ctx, m.region, m.bucket.Name, m.prefix))
 	case " ":
 		e := m.selectedEntry()
@@ -317,7 +317,7 @@ func (m browserModel) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.table.SetRows(buildEntryRows(m.entries, m.selected))
 		m.status = fmt.Sprintf("%d selected", len(m.selected))
 		return m, nil
-	case "D":
+	case "ctrl+d":
 		keys := m.pendingDeleteKeys()
 		if len(keys) == 0 {
 			m.status = "nothing to delete (cursor on a folder?)"
@@ -413,8 +413,8 @@ func (m browserModel) HelpItems() []help.Section {
 			{Keys: "enter", Desc: "open folder / download file"},
 			{Keys: "esc", Desc: "go up one prefix (or back to bucket list)"},
 			{Keys: "space", Desc: "toggle file selection"},
-			{Keys: "D", Desc: "delete selected (or cursor file) with y/n confirm"},
-			{Keys: "U", Desc: "upload files into current prefix"},
+			{Keys: "ctrl+d", Desc: "delete selected (or cursor file) with y/n confirm"},
+			{Keys: "ctrl+u", Desc: "upload files into current prefix"},
 			{Keys: "y", Desc: "yank menu: u=s3://, h=https, k=key, b=bucket"},
 			{Keys: "r", Desc: "refresh prefix"},
 			{Keys: "↑/↓ j/k", Desc: "move cursor"},
@@ -453,12 +453,12 @@ func (m browserModel) View() string {
 		notes = append(notes, mutedStyle.Render(fmt.Sprintf("showing first %d entries; refine the prefix to see more", objectsPageMax)))
 	}
 	if len(m.selected) > 0 && !m.confirmDelete {
-		notes = append(notes, mutedStyle.Render(fmt.Sprintf("%d selected (space toggles, D deletes)", len(m.selected))))
+		notes = append(notes, mutedStyle.Render(fmt.Sprintf("%d selected (space toggles, ctrl+d deletes)", len(m.selected))))
 	}
 	if m.status != "" {
 		notes = append(notes, mutedStyle.Render(m.status))
 	}
-	help := mutedStyle.Render("enter: open/download · space: select · D: delete · U: upload · y u/h/k/b: yank · r: refresh · esc: up/back")
+	help := mutedStyle.Render("enter: open/download · space: select · ctrl+d: delete · ctrl+u: upload · y u/h/k/b: yank · r: refresh · esc: up/back")
 
 	parts := []string{title, ""}
 	if len(m.prefixHist) > 0 || m.prefix != "" {
