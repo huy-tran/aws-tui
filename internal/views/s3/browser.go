@@ -179,6 +179,11 @@ func (m browserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.table.GotoTop()
 		return m, nil
 
+	case refreshPrefixMsg:
+		m.ctx.Cache.Invalidate("s3:objects:" + m.bucket.Name + ":" + m.prefix)
+		m.loading = true
+		return m, tea.Batch(m.loader.Tick(), m.listPrefix(m.prefix, true))
+
 	case errMsg:
 		m.loading = false
 		m.err = msg.err
@@ -254,6 +259,8 @@ func (m browserModel) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.yankPending = true
 		m.status = "yank: u=s3://, h=https, k=key, b=bucket"
 		return m, nil
+	case "U":
+		return m, nav.PushView(newUpload(m.ctx, m.region, m.bucket.Name, m.prefix))
 	case "enter":
 		e := m.selected()
 		if e == nil {
@@ -283,6 +290,7 @@ func (m browserModel) HelpItems() []help.Section {
 			{Keys: "enter", Desc: "open folder / download file"},
 			{Keys: "esc", Desc: "go up one prefix (or back to bucket list)"},
 			{Keys: "y", Desc: "yank menu: u=s3://, h=https, k=key, b=bucket"},
+			{Keys: "U", Desc: "upload files into current prefix"},
 			{Keys: "r", Desc: "refresh prefix"},
 			{Keys: "↑/↓ j/k", Desc: "move cursor"},
 		},
@@ -319,7 +327,7 @@ func (m browserModel) View() string {
 	if m.status != "" {
 		notes = append(notes, mutedStyle.Render(m.status))
 	}
-	help := mutedStyle.Render("enter: open/download · y u/h/k/b: yank · r: refresh · esc: up/back")
+	help := mutedStyle.Render("enter: open/download · U: upload · y u/h/k/b: yank · r: refresh · esc: up/back")
 
 	parts := []string{title, ""}
 	if len(m.prefixHist) > 0 || m.prefix != "" {
