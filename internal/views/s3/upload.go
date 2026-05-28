@@ -372,10 +372,13 @@ func buildLocalRows(entries []localEntry, queued map[string]bool) []datatable.Ro
 	rows := make([]datatable.Row, len(entries))
 	for i, e := range entries {
 		name := e.name
-		if e.isDir {
-			name = folderStyle.Render(name + "/")
-		} else if queued[e.path] {
-			name = queuedFileStyle.Render("✓ " + name)
+		switch {
+		case e.isDir:
+			name = "  " + name + "/"
+		case queued[e.path]:
+			name = "✓ " + name
+		default:
+			name = "  " + name
 		}
 		size := "-"
 		if !e.isDir {
@@ -609,7 +612,3 @@ func (m uploadModel) HelpItems() []help.Section {
 	}}
 }
 
-var (
-	folderStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true)
-	queuedFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true)
-)

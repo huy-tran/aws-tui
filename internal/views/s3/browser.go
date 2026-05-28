@@ -489,12 +489,15 @@ func buildEntryRows(entries []entry, selected map[string]bool) []datatable.Row {
 		modified := "-"
 		if e.isFolder {
 			size = "<prefix>"
-			name = folderStyle.Render(name)
+			// Folders are already rendered with a trailing "/" by S3
+			// CommonPrefixes; no extra marker needed.
 		} else {
 			size = humanBytes(e.size)
 			modified = e.modified
 			if selected[e.name] {
-				name = queuedFileStyle.Render("✓ " + name)
+				name = "✓ " + name
+			} else {
+				name = "  " + name // keep alignment with selected rows
 			}
 		}
 		rows[i] = datatable.Row{name, size, modified}
