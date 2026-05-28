@@ -6,21 +6,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	s3sdk "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
-	"github.com/charmbracelet/bubbles/filepicker"
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/nav"
+	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
 )
@@ -38,6 +40,11 @@ const (
 )
 
 type (
+	dirLoadedMsg struct {
+		dir     string
+		entries []localEntry
+		err     error
+	}
 	headProbeDoneMsg struct{ exists map[string]bool }
 	uploadStepMsg    struct {
 		index int
@@ -49,9 +56,17 @@ type (
 	refreshPrefixMsg struct{}
 )
 
+type localEntry struct {
+	name     string
+	path     string
+	isDir    bool
+	size     int64
+	modified time.Time
+}
+
 type uploadItem struct {
 	path string
-	key  string // destination key under the bucket
+	key  string
 	size int64
 }
 
@@ -61,57 +76,118 @@ type uploadModel struct {
 	bucket string
 	prefix string
 
-	picker  filepicker.Model
+	dir       string
+	dirHist   []string
+	entries   []localEntry
+	displayed []localEntry
+	queued    map[string]bool // local path -> queued
+
+	table      datatable.Model
+	filter     textinput.Model
+	filterMode bool
+
 	stage   uploadStage
 	queue   []uploadItem
-	exists  map[string]bool // key -> true if HeadObject succeeded
+	exists  map[string]bool
 	results []uploadStepMsg
-	stepIdx int
 
 	loader loader.Model
 	err    error
 	status string
+
+	width, height int
 }
 
 func newUpload(ctx *awspkg.Context, region, bucket, prefix string) uploadModel {
-	fp := filepicker.New()
-	fp.AllowedTypes = nil
-	fp.ShowHidden = false
-	fp.ShowPermissions = false
-	fp.ShowSize = true
-	fp.AutoHeight = false
-	fp.SetHeight(15)
+	dir := "."
 	if home, err := os.UserHomeDir(); err == nil {
-		fp.CurrentDirectory = home
+		dir = home
 	}
-	// Drop esc from Back so esc cancels the whole modal.
-	fp.KeyMap.Back = key.NewBinding(key.WithKeys("h", "backspace", "left"), key.WithHelp("h", "back"))
+
+	cols := []datatable.Column{
+		{Title: "Name", Flex: true},
+		{Title: "Size", Align: lipgloss.Right, SortAs: datatable.SortNumeric},
+		{Title: "Modified"},
+	}
+	t := datatable.New(cols)
+	t.SetHeight(15)
+
+	ti := textinput.New()
+	ti.Placeholder = "filter"
+	ti.CharLimit = 64
+	ti.Prompt = "/ "
 
 	return uploadModel{
 		ctx:    ctx,
 		region: region,
 		bucket: bucket,
 		prefix: prefix,
-		picker: fp,
+		dir:    dir,
+		queued: make(map[string]bool),
+		table:  t,
+		filter: ti,
 		loader: loader.New(),
 	}
 }
 
 func (m uploadModel) Init() tea.Cmd {
-	return m.picker.Init()
+	return loadDirCmd(m.dir)
+}
+
+func loadDirCmd(dir string) tea.Cmd {
+	return func() tea.Msg {
+		raw, err := os.ReadDir(dir)
+		if err != nil {
+			return dirLoadedMsg{dir: dir, err: err}
+		}
+		entries := make([]localEntry, 0, len(raw))
+		for _, de := range raw {
+			info, err := de.Info()
+			if err != nil {
+				continue
+			}
+			entries = append(entries, localEntry{
+				name:     de.Name(),
+				path:     filepath.Join(dir, de.Name()),
+				isDir:    de.IsDir(),
+				size:     info.Size(),
+				modified: info.ModTime(),
+			})
+		}
+		sort.SliceStable(entries, func(i, j int) bool {
+			if entries[i].isDir != entries[j].isDir {
+				return entries[i].isDir
+			}
+			return strings.ToLower(entries[i].name) < strings.ToLower(entries[j].name)
+		})
+		return dirLoadedMsg{dir: dir, entries: entries}
+	}
 }
 
 func (m uploadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		h := msg.Height - 10
+		m.width = msg.Width
+		m.height = msg.Height
+		h := msg.Height - 12
 		if h < 5 {
 			h = 5
 		}
-		m.picker.SetHeight(h)
-		var cmd tea.Cmd
-		m.picker, cmd = m.picker.Update(msg)
-		return m, cmd
+		m.table.SetHeight(h)
+		m.table.SetWidth(msg.Width)
+		return m, nil
+
+	case dirLoadedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.dir = msg.dir
+		m.entries = msg.entries
+		m.err = nil
+		m.applyFilter()
+		m.table.GotoTop()
+		return m, nil
 
 	case headProbeDoneMsg:
 		m.exists = msg.exists
@@ -135,7 +211,6 @@ func (m uploadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if next >= len(m.queue) {
 			return m, func() tea.Msg { return uploadAllDoneMsg{} }
 		}
-		m.stepIdx = next
 		return m, m.uploadStepCmd(next)
 
 	case uploadAllDoneMsg:
@@ -154,37 +229,54 @@ func (m uploadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.updateKeys(msg)
 	}
-	// Forward any other message (filepicker's readDirMsg etc.) to the picker.
-	if m.stage == stagePicking {
-		var cmd tea.Cmd
-		m.picker, cmd = m.picker.Update(msg)
-		return m, cmd
-	}
 	return m, nil
 }
 
 func (m uploadModel) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.stage {
 	case stagePicking:
-		if msg.String() == "esc" {
-			return m, nav.PopView()
+		if m.filterMode {
+			switch msg.String() {
+			case "esc":
+				m.filterMode = false
+				m.filter.SetValue("")
+				m.filter.Blur()
+				m.applyFilter()
+				return m, nil
+			case "enter":
+				m.filterMode = false
+				m.filter.Blur()
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.filter, cmd = m.filter.Update(msg)
+			m.applyFilter()
+			return m, cmd
 		}
-		if msg.String() == "U" {
+
+		switch msg.String() {
+		case "esc":
+			return m, nav.PopView()
+		case "/":
+			m.filterMode = true
+			m.filter.Focus()
+			return m, textinput.Blink
+		case "U":
 			if len(m.queue) == 0 {
-				m.status = "queue is empty - select files with enter first"
+				m.status = "queue is empty - press enter on a file to add it"
 				return m, nil
 			}
 			m.stage = stageProbing
 			m.status = ""
 			return m, tea.Batch(m.loader.Tick(), m.headProbeCmd())
+		case "backspace", "h", "left":
+			return m.goUp()
+		case "enter", "l", "right":
+			return m.activateCursor()
 		}
-		// Let filepicker handle navigation; intercept selections to toggle queue.
+
 		var cmd tea.Cmd
-		m.picker, cmd = m.picker.Update(msg)
-		if picked, path := m.picker.DidSelectFile(msg); picked {
-			m.toggleQueue(path)
-			m.status = ""
-		}
+		m.table, cmd = m.table.Update(msg)
 		return m, cmd
 
 	case stageConfirming:
@@ -199,7 +291,6 @@ func (m uploadModel) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case stageProbing, stageUploading:
-		// Block input during async work; allow esc only after done.
 		return m, nil
 
 	case stageDone:
@@ -211,19 +302,89 @@ func (m uploadModel) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *uploadModel) toggleQueue(path string) {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return
+func (m uploadModel) goUp() (tea.Model, tea.Cmd) {
+	parent := filepath.Dir(m.dir)
+	if parent == m.dir {
+		return m, nil
 	}
-	dstKey := m.prefix + filepath.Base(path)
-	for i, it := range m.queue {
-		if it.path == path {
-			m.queue = append(m.queue[:i], m.queue[i+1:]...)
-			return
+	m.dirHist = append(m.dirHist, m.dir)
+	m.filter.SetValue("")
+	return m, loadDirCmd(parent)
+}
+
+func (m uploadModel) activateCursor() (tea.Model, tea.Cmd) {
+	e := m.cursorEntry()
+	if e == nil {
+		return m, nil
+	}
+	if e.isDir {
+		m.dirHist = append(m.dirHist, m.dir)
+		m.filter.SetValue("")
+		return m, loadDirCmd(e.path)
+	}
+	// File: toggle in queue.
+	if m.queued[e.path] {
+		delete(m.queued, e.path)
+		for i, it := range m.queue {
+			if it.path == e.path {
+				m.queue = append(m.queue[:i], m.queue[i+1:]...)
+				break
+			}
 		}
+	} else {
+		m.queued[e.path] = true
+		m.queue = append(m.queue, uploadItem{
+			path: e.path,
+			key:  m.prefix + e.name,
+			size: e.size,
+		})
 	}
-	m.queue = append(m.queue, uploadItem{path: path, key: dstKey, size: info.Size()})
+	m.applyFilter()
+	m.status = ""
+	return m, nil
+}
+
+func (m uploadModel) cursorEntry() *localEntry {
+	idx := m.table.Cursor()
+	if idx < 0 || idx >= len(m.displayed) {
+		return nil
+	}
+	return &m.displayed[idx]
+}
+
+func (m *uploadModel) applyFilter() {
+	q := strings.ToLower(strings.TrimSpace(m.filter.Value()))
+	if q == "" {
+		m.displayed = m.entries
+	} else {
+		out := make([]localEntry, 0, len(m.entries))
+		for _, e := range m.entries {
+			if strings.Contains(strings.ToLower(e.name), q) {
+				out = append(out, e)
+			}
+		}
+		m.displayed = out
+	}
+	m.table.SetRows(buildLocalRows(m.displayed, m.queued))
+}
+
+func buildLocalRows(entries []localEntry, queued map[string]bool) []datatable.Row {
+	rows := make([]datatable.Row, len(entries))
+	for i, e := range entries {
+		name := e.name
+		if e.isDir {
+			name = folderStyle.Render(name + "/")
+		} else if queued[e.path] {
+			name = queuedFileStyle.Render("✓ " + name)
+		}
+		size := "-"
+		if !e.isDir {
+			size = humanBytes(e.size)
+		}
+		modified := e.modified.Local().Format("2006-01-02 15:04")
+		rows[i] = datatable.Row{name, size, modified}
+	}
+	return rows
 }
 
 func (m uploadModel) headProbeCmd() tea.Cmd {
@@ -254,7 +415,6 @@ func (m uploadModel) headProbeCmd() tea.Cmd {
 				} else {
 					var apiErr smithy.APIError
 					if errors.As(err, &apiErr) {
-						// "NotFound" / "NoSuchKey" -> not exists; anything else -> assume not present.
 						_ = apiErr
 					}
 				}
@@ -308,22 +468,35 @@ func (m uploadModel) View() string {
 }
 
 func (m uploadModel) viewPicking(title string) string {
-	queueLines := []string{mutedStyle.Render("Queued files (" + fmt.Sprint(len(m.queue)) + "):")}
+	dirLine := mutedStyle.Render(m.dir)
+	filterLine := m.filter.View()
+	if !m.filterMode && m.filter.Value() == "" {
+		filterLine = mutedStyle.Render("press / to filter")
+	}
+
+	body := m.table.View()
+	if m.err != nil {
+		body = errorStyle.Render("Error: " + m.err.Error())
+	} else if len(m.displayed) == 0 {
+		if m.filter.Value() != "" {
+			body = mutedStyle.Render("No entries match filter.")
+		} else {
+			body = mutedStyle.Render("(empty directory)")
+		}
+	}
+
+	queueLines := []string{mutedStyle.Render(fmt.Sprintf("Queued files (%d):", len(m.queue)))}
 	if len(m.queue) == 0 {
-		queueLines = append(queueLines, mutedStyle.Render("  (none) - enter selects/toggles a file"))
+		queueLines = append(queueLines, mutedStyle.Render("  (none) - enter on a file adds it; folders descend"))
 	} else {
 		for _, it := range m.queue {
 			queueLines = append(queueLines, fmt.Sprintf("  %s  %s -> %s", humanBytes(it.size), filepath.Base(it.path), it.key))
 		}
 	}
-	hint := mutedStyle.Render("enter: toggle file in queue · U: upload · h/backspace: up a dir · esc: cancel")
-	parts := []string{
-		title,
-		mutedStyle.Render(m.picker.CurrentDirectory),
-		m.picker.View(),
-		"",
-		strings.Join(queueLines, "\n"),
-	}
+
+	hint := mutedStyle.Render("enter: enter dir / toggle file · /: filter · U: upload · backspace: up a dir · esc: cancel")
+
+	parts := []string{title, dirLine, filterLine, body, "", strings.Join(queueLines, "\n")}
 	if m.status != "" {
 		parts = append(parts, "", mutedStyle.Render(m.status))
 	}
@@ -392,17 +565,28 @@ func (m uploadModel) viewDone(title string) string {
 }
 
 func (m uploadModel) CapturingInput() bool {
-	return m.stage == stagePicking || m.stage == stageConfirming
+	return m.filterMode || m.stage == stageConfirming
 }
 
 func (m uploadModel) HelpItems() []help.Section {
 	switch m.stage {
 	case stagePicking:
+		if m.filterMode {
+			return []help.Section{{
+				Title: "S3 · upload (filter)",
+				Items: []help.Item{
+					{Keys: "type", Desc: "filter entries by name"},
+					{Keys: "enter", Desc: "apply and exit filter"},
+					{Keys: "esc", Desc: "clear and exit filter"},
+				},
+			}}
+		}
 		return []help.Section{{
 			Title: "S3 · upload (pick files)",
 			Items: []help.Item{
-				{Keys: "enter", Desc: "toggle file in queue / enter directory"},
-				{Keys: "h / backspace", Desc: "up a directory"},
+				{Keys: "enter / l", Desc: "enter directory / toggle file in queue"},
+				{Keys: "backspace / h", Desc: "up a directory"},
+				{Keys: "/", Desc: "filter entries"},
 				{Keys: "j/k ↓/↑", Desc: "move cursor"},
 				{Keys: "U", Desc: "upload queued files"},
 				{Keys: "esc", Desc: "cancel and return to browser"},
@@ -424,3 +608,8 @@ func (m uploadModel) HelpItems() []help.Section {
 		},
 	}}
 }
+
+var (
+	folderStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true)
+	queuedFileStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true)
+)
