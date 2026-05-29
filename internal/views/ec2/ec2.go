@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,33 @@ import (
 )
 
 const instancesCacheTTL = 60 * time.Second
+
+// stateFilterAll is the sentinel value that disables state filtering.
+const stateFilterAll = "all"
+
+// stateFilters is the cycle of EC2 state filters toggled with 'f'. Index 0
+// ("all") shows everything; the rest match a single instance state exactly.
+// The default selection is "running" (see New).
+var stateFilters = []string{
+	stateFilterAll,
+	"running",
+	"pending",
+	"stopping",
+	"stopped",
+	"shutting-down",
+	"terminated",
+}
+
+// stateFilterIndex returns the position of s in stateFilters, or 0 ("all")
+// when it is not found.
+func stateFilterIndex(s string) int {
+	for i, v := range stateFilters {
+		if v == s {
+			return i
+		}
+	}
+	return 0
+}
 
 func init() { gob.Register([]Instance(nil)) }
 
@@ -85,6 +113,8 @@ type Model struct {
 	filterMode bool
 	instances  []Instance // full list as returned by DescribeInstances
 	displayed  []Instance // visible after filter; equals instances when no filter
+	stateFilterIdx int    // index into stateFilters; selects which states show
+	statePicking   bool   // true while the "press a state number" ribbon is up
 	loading    bool
 	err        error
 	width      int
@@ -123,12 +153,13 @@ func New(ctx *awspkg.Context) Model {
 	confirm.CharLimit = 32
 
 	return Model{
-		ctx:          ctx,
-		table:        t,
-		loader:       loader.New(),
-		filter:       ti,
-		confirmInput: confirm,
-		loading:      true,
+		ctx:            ctx,
+		table:          t,
+		loader:         loader.New(),
+		filter:         ti,
+		confirmInput:   confirm,
+		stateFilterIdx: stateFilterIndex("running"),
+		loading:        true,
 	}
 }
 
@@ -288,6 +319,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.confirmInput, cmd = m.confirmInput.Update(msg)
 			return m, cmd
 		}
+		// State-filter picker ribbon: consume the next keystroke. Digit
+		// 1..N or the state's first letter jumps straight to it; esc cancels.
+		if m.statePicking {
+			return m.handleStatePick(msg), nil
+		}
 		if m.filterMode {
 			switch msg.String() {
 			case "esc":
@@ -317,6 +353,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filterMode = true
 			m.filter.Focus()
 			return m, textinput.Blink
+		case "f":
+			m.statePicking = true
+			return m, nil
 		case "enter":
 			if inst := m.selected(); inst != nil && inst.State == "running" {
 				return m, m.startSSMSession(*inst)
@@ -375,23 +414,73 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// applyFilter rebuilds m.displayed and the table rows based on the current
-// filter text. Empty filter shows everything. Allocates a fresh slice on
-// narrow so it never aliases m.instances - aliasing previously caused
-// duplicate / corrupted rows when the filter was tightened in steps.
-func (m *Model) applyFilter() {
-	q := strings.ToLower(strings.TrimSpace(m.filter.Value()))
-	if q == "" {
-		m.displayed = m.instances
-	} else {
-		out := make([]Instance, 0, len(m.instances))
-		for _, inst := range m.instances {
-			if instanceMatches(inst, q) {
-				out = append(out, inst)
+// stateFilter returns the currently selected state filter ("all" disables
+// state filtering).
+func (m Model) stateFilter() string { return stateFilters[m.stateFilterIdx] }
+
+// handleStatePick consumes the next key while the state-filter ribbon is up,
+// mirroring the datatable sort picker. Digit 1..N selects that state; a
+// single letter selects the first state whose name starts with it (so 'a'
+// all, 'r' running, 'p' pending, 't' terminated; 's' picks the first of the
+// s-states); esc cancels. Anything else just closes the ribbon.
+func (m Model) handleStatePick(msg tea.KeyMsg) Model {
+	m.statePicking = false
+	s := msg.String()
+	if s == "esc" {
+		return m
+	}
+	target := -1
+	if n, err := strconv.Atoi(s); err == nil && n >= 1 && n <= len(stateFilters) {
+		target = n - 1
+	} else if len(s) == 1 {
+		ch := strings.ToLower(s)
+		for i, st := range stateFilters {
+			if strings.HasPrefix(st, ch) {
+				target = i
+				break
 			}
 		}
-		m.displayed = out
 	}
+	if target < 0 {
+		return m
+	}
+	m.stateFilterIdx = target
+	m.applyFilter()
+	return m
+}
+
+// renderStateRibbon shows the numbered states the user can press while the
+// state-filter picker is open.
+func (m Model) renderStateRibbon() string {
+	parts := make([]string, len(stateFilters))
+	for i, st := range stateFilters {
+		parts[i] = fmt.Sprintf("[%d] %s", i+1, st)
+	}
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
+	return style.Render("filter state: ") + strings.Join(parts, "  ") +
+		mutedStyle.Render("   (esc to cancel)")
+}
+
+// applyFilter rebuilds m.displayed and the table rows from the current state
+// filter and filter text. The state filter (default "running") narrows by
+// instance state; the text filter narrows by name / id / ip / tag. Always
+// allocates a fresh slice so it never aliases m.instances - aliasing
+// previously caused duplicate / corrupted rows when filters were tightened
+// in steps.
+func (m *Model) applyFilter() {
+	q := strings.ToLower(strings.TrimSpace(m.filter.Value()))
+	state := m.stateFilter()
+	out := make([]Instance, 0, len(m.instances))
+	for _, inst := range m.instances {
+		if state != stateFilterAll && inst.State != state {
+			continue
+		}
+		if q != "" && !instanceMatches(inst, q) {
+			continue
+		}
+		out = append(out, inst)
+	}
+	m.displayed = out
 	m.table.SetRows(buildRows(m.displayed))
 }
 
@@ -411,7 +500,7 @@ func instanceMatches(inst Instance, q string) bool {
 }
 
 func (m Model) CapturingInput() bool {
-	return m.filterMode || m.pendingAction != ""
+	return m.filterMode || m.pendingAction != "" || m.statePicking
 }
 
 // BookmarkCurrent surfaces the highlighted instance so the dashboard can
@@ -436,6 +525,10 @@ func (m Model) BookmarkCurrent() (string, string, bool) {
 // dashboard's tea.Model slice.
 func (m Model) SetFilterQuery(q string) tea.Model {
 	m.filter.SetValue(q)
+	// Drop to "all" so a bookmarked instance in any state (stopped,
+	// terminated, ...) still lands in view instead of being hidden by the
+	// default running-only filter.
+	m.stateFilterIdx = stateFilterIndex(stateFilterAll)
 	m.applyFilter()
 	return m
 }
@@ -459,6 +552,16 @@ func (m Model) HelpItems() []help.Section {
 			},
 		}}
 	}
+	if m.statePicking {
+		return []help.Section{{
+			Title: "EC2 · state filter",
+			Items: []help.Item{
+				{Keys: "1-7", Desc: "pick state by number (all / running / … / terminated)"},
+				{Keys: "a r p s t", Desc: "first letter jumps to that state"},
+				{Keys: "esc", Desc: "cancel"},
+			},
+		}}
+	}
 	if m.pendingAction != "" {
 		return []help.Section{{
 			Title: fmt.Sprintf("EC2 · confirm %s", m.pendingAction),
@@ -477,6 +580,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "i", Desc: "instance details"},
 			{Keys: "c", Desc: "console output"},
 			{Keys: "S / U / R", Desc: "stop / start (up) / reboot (confirm required)"},
+			{Keys: "f", Desc: "pick state filter (ribbon: 1-7 or first letter)"},
 			{Keys: "/", Desc: "filter"},
 			{Keys: "r", Desc: "refresh (invalidates cache)"},
 			{Keys: "↑/↓ j/k", Desc: "move cursor"},
@@ -574,14 +678,20 @@ func (m Model) View() string {
 	if !m.filterMode && m.filter.Value() == "" {
 		filterLine = mutedStyle.Render("press / to filter")
 	}
+	if m.statePicking {
+		filterLine = m.renderStateRibbon()
+	}
 
-	help := mutedStyle.Render("enter: SSM · p: port forward · i: details · c: console · S/U/R: stop/start/reboot · r: refresh · /: filter")
+	help := mutedStyle.Render("enter: SSM · p: port forward · i: details · c: console · S/U/R: stop/start/reboot · f: state · r: refresh · /: filter")
 
 	body := m.table.View()
 	if len(m.displayed) == 0 {
-		if m.filter.Value() != "" {
+		switch {
+		case m.filter.Value() != "":
 			body = mutedStyle.Render("No instances match filter.")
-		} else {
+		case m.stateFilter() != stateFilterAll && len(m.instances) > 0:
+			body = mutedStyle.Render(fmt.Sprintf("No %s instances (press f to change state filter).", m.stateFilter()))
+		default:
 			body = mutedStyle.Render("No instances in this region.")
 		}
 	}
@@ -623,7 +733,9 @@ func (m Model) renderListHeader() string {
 			stopped++
 		}
 	}
-	return headerStyle.Render(fmt.Sprintf("EC2 Instances (%d running, %d stopped)", running, stopped))
+	header := headerStyle.Render(fmt.Sprintf("EC2 Instances (%d running, %d stopped)", running, stopped))
+	badge := mutedStyle.Render(fmt.Sprintf("  state: %s", m.stateFilter()))
+	return header + badge
 }
 
 func buildRows(instances []Instance) []datatable.Row {
