@@ -203,6 +203,21 @@ func (m *Model) SetCursor(c int) {
 	m.clamp()
 }
 
+// SetSort sets the active sort column and direction (+1 ascending, -1
+// descending) and re-applies it to the current rows. Pass col = -1 to clear
+// sorting and keep caller order. Safe to call before any rows are set - the
+// choice persists and is re-applied on the next SetRows.
+func (m *Model) SetSort(col, dir int) {
+	m.sortCol = col
+	if dir < 0 {
+		m.sortDir = -1
+	} else {
+		m.sortDir = 1
+	}
+	m.applySort()
+	m.clamp()
+}
+
 func (m *Model) GotoTop()    { m.cursor = 0; m.offset = 0 }
 func (m *Model) GotoBottom() { m.cursor = len(m.rows) - 1; m.clamp() }
 

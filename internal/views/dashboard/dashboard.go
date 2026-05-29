@@ -16,6 +16,7 @@ import (
 	"github.com/huy-tran/aws-tui/internal/views/bookmarks"
 	"github.com/huy-tran/aws-tui/internal/views/cloudfront"
 	"github.com/huy-tran/aws-tui/internal/views/cloudwatch"
+	"github.com/huy-tran/aws-tui/internal/views/codedeploy"
 	"github.com/huy-tran/aws-tui/internal/views/ec2"
 	"github.com/huy-tran/aws-tui/internal/views/paramstore"
 	"github.com/huy-tran/aws-tui/internal/views/rds"
@@ -48,15 +49,16 @@ const (
 	TabS3
 	TabParamStore
 	TabSecurityHub
+	TabCodeDeploy
 )
 
-var tabNames = []string{"Beanstalk", "EC2", "RDS", "Logs", "CloudFront", "S3", "Parameter Store", "SecurityHub"}
+var tabNames = []string{"Beanstalk", "EC2", "RDS", "Logs", "CloudFront", "S3", "Parameter Store", "SecurityHub", "CodeDeploy"}
 
 type Model struct {
 	ctx    *awspkg.Context
 	store  *state.Store
 	active Tab
-	tabs   [8]tea.Model
+	tabs   [9]tea.Model
 	width  int
 	height int
 	status string
@@ -86,6 +88,7 @@ func New(ctx *awspkg.Context, store *state.Store) Model {
 	m.tabs[TabS3] = s3.New(ctx, store)
 	m.tabs[TabParamStore] = paramstore.New(ctx)
 	m.tabs[TabSecurityHub] = securityhub.New(ctx)
+	m.tabs[TabCodeDeploy] = codedeploy.New(ctx)
 	return m
 }
 

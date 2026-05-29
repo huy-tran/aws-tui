@@ -38,8 +38,8 @@ func keyMsg(s string) tea.KeyMsg {
 // newTestModel builds a Model wired up with stub tabs in every slot. ctx is
 // left nil because Update() never touches it. Stubs are ordered to match
 // the Tab constants in dashboard.go so stubs[TabX] is the right stub for X.
-func newTestModel() (Model, [8]*stubTab) {
-	stubs := [8]*stubTab{
+func newTestModel() (Model, [9]*stubTab) {
+	stubs := [9]*stubTab{
 		{id: "beanstalk"},
 		{id: "ec2"},
 		{id: "rds"},
@@ -48,6 +48,7 @@ func newTestModel() (Model, [8]*stubTab) {
 		{id: "s3"},
 		{id: "paramstore"},
 		{id: "securityhub"},
+		{id: "codedeploy"},
 	}
 	m := Model{active: TabBeanstalk}
 	for i, s := range stubs {
@@ -142,7 +143,7 @@ func TestTabPassesThroughWhileCapturing(t *testing.T) {
 func TestShiftTabSwitchesBackward(t *testing.T) {
 	m, _ := newTestModel()
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if got := updated.(Model).active; got != TabSecurityHub {
-		t.Fatalf("expected shift+tab from TabBeanstalk to wrap to TabSecurityHub, got %v", got)
+	if got := updated.(Model).active; got != TabCodeDeploy {
+		t.Fatalf("expected shift+tab from TabBeanstalk to wrap to TabCodeDeploy, got %v", got)
 	}
 }

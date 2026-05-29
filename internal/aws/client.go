@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/codedeploy"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/elasticbeanstalk"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -125,4 +126,8 @@ func (c *Context) SecurityHub() *securityhub.Client {
 
 func (c *Context) RDS() *rds.Client {
 	return rds.NewFromConfig(*c.cfg)
+}
+
+func (c *Context) CodeDeploy() *codedeploy.Client {
+	return codedeploy.NewFromConfig(*c.cfg)
 }
