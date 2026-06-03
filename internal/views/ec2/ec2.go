@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -202,6 +203,23 @@ func (m Model) loadCmd(force bool) tea.Cmd {
 	}
 }
 
+// sortInstancesByName orders instances by their Name tag (case-insensitive),
+// with the instance ID as a tie-breaker. Unnamed instances sort after named
+// ones so they cluster at the bottom of the list.
+func sortInstancesByName(instances []Instance) {
+	sort.SliceStable(instances, func(i, j int) bool {
+		ni, nj := instances[i].Name, instances[j].Name
+		if (ni == "") != (nj == "") {
+			return ni != "" // named instances first
+		}
+		li, lj := strings.ToLower(ni), strings.ToLower(nj)
+		if li != lj {
+			return li < lj
+		}
+		return instances[i].ID < instances[j].ID
+	})
+}
+
 func parseInstance(inst types.Instance) Instance {
 	out := Instance{
 		ID:     awssdk.ToString(inst.InstanceId),
@@ -267,6 +285,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loadedMsg:
 		m.loading = false
 		m.instances = msg.instances
+		sortInstancesByName(m.instances)
 		m.lastLoaded = time.Now()
 		m.applyFilter()
 		return m, nil
