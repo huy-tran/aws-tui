@@ -626,7 +626,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		h := msg.Height - 4
+		h := msg.Height - 6
 		if h < 3 {
 			h = 3
 		}
@@ -1306,7 +1306,7 @@ func (m Model) View() string {
 		body = mutedStyle.Render("No groups match filter.")
 	}
 	help := mutedStyle.Render("enter: streams · t: tail (shells out) · s: search · /: filter · r: refresh")
-	return lipgloss.JoinVertical(lipgloss.Left, header, filterLine, body, help)
+	return lipgloss.JoinVertical(lipgloss.Left, header, filterLine, "", body, "", help)
 }
 
 func buildGroupRows(items []LogGroup) []datatable.Row {

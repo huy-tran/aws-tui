@@ -89,7 +89,7 @@ func (m consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		h := msg.Height - 5
+		h := msg.Height - 6
 		if h < 5 {
 			h = 5
 		}
@@ -163,7 +163,7 @@ func (m consoleModel) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("fetching console output..."))
 	}
 	help := mutedStyle.Render("↑/↓ scroll · r: refresh (latest) · y: yank · esc: back")
-	parts := []string{title, "", m.vp.View(), help}
+	parts := []string{title, "", m.vp.View(), "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))
 	}

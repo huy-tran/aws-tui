@@ -75,9 +75,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Reserve one row at the top for the app title bar and one at the
-		// bottom for the status bar.
-		inner := tea.WindowSizeMsg{Width: msg.Width, Height: msg.Height - 2}
+		// Reserve four rows of chrome: the app title bar (top), the status
+		// bar (bottom), and one blank spacer above and below the body so the
+		// title, body and footer don't sit flush against each other.
+		inner := tea.WindowSizeMsg{Width: msg.Width, Height: msg.Height - 4}
 		// Lower views need dimensions for when they re-render after a pop.
 		for i, v := range m.stack {
 			updated, _ := v.Update(inner)
@@ -165,11 +166,13 @@ func (m Model) View() string {
 	title := m.renderTitle()
 	if len(m.stack) == 0 {
 		footer := statusbar.Render(m.statusSnapshot(), m.width)
-		return lipgloss.JoinVertical(lipgloss.Left, title, footer)
+		return lipgloss.JoinVertical(lipgloss.Left, title, "", footer)
 	}
 	body := m.stack[len(m.stack)-1].View()
 	footer := statusbar.Render(m.statusSnapshot(), m.width)
-	base := lipgloss.JoinVertical(lipgloss.Left, title, body, footer)
+	// Blank spacer rows top and bottom keep the title and status bars from
+	// sitting flush against the body.
+	base := lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", footer)
 	if !m.helpOpen {
 		return base
 	}
@@ -262,12 +265,12 @@ func (m Model) resetToRegionPicker() (Model, tea.Cmd) {
 // so its first View() call can use real dimensions. Bubble Tea does not
 // re-broadcast WindowSizeMsg on push, so views pushed after the program has
 // started would otherwise render at 0x0 until the next terminal resize.
-// Subtract two rows so the view fits alongside the title bar (top) and
-// the status footer (bottom).
+// Subtract four rows so the view fits alongside the title bar (top), the
+// status footer (bottom) and the blank spacer row above and below it.
 func (m Model) sizeView(v tea.Model) tea.Model {
 	if m.width <= 0 || m.height <= 0 {
 		return v
 	}
-	updated, _ := v.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height - 2})
+	updated, _ := v.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height - 4})
 	return updated
 }

@@ -17,8 +17,11 @@ ANSI 256-color codes passed to `lipgloss.Color("…")`.
 - When the app is in dry-run mode, append a bold ` [DRY-RUN]` badge in
   foreground `214` (amber) so the mode is always visible.
 - Layout is three stacked regions, joined top-to-bottom:
-  `title bar` (1 row) / `body` (the active view) / `status footer` (1 row).
-  Reserve two rows total for the chrome when sizing views.
+  `title bar` (1 row) / `body` (the active view) / `status footer` (1 row),
+  with a blank spacer row between the title and the body and another between
+  the body and the footer so the regions don't sit flush against each other.
+  Reserve four rows total for the chrome (title + footer + two spacers) when
+  sizing views.
 
 ## Status footer
 

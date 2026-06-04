@@ -173,7 +173,9 @@ func formatTime(t *time.Time) string {
 func (m browserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		h := msg.Height - 4
+		// Reserve rows for the title, the "esc: go up" note, the help line
+		// and the blank spacer rows the list view inserts around the table.
+		h := msg.Height - 6
 		if h < 3 {
 			h = 3
 		}

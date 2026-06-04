@@ -278,7 +278,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		h := msg.Height - 4
+		h := msg.Height - 6
 		if h < 3 {
 			h = 3
 		}
@@ -660,7 +660,7 @@ func (m Model) View() string {
 		body = mutedStyle.Render("No distributions match filter.")
 	}
 	help := mutedStyle.Render("enter: open · i: invalidate · v: invalidations · /: filter · r: refresh")
-	parts := []string{header, filterLine, body, help}
+	parts := []string{header, filterLine, "", body, "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))
 	}

@@ -64,7 +64,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		h := msg.Height - 4
+		h := msg.Height - 6
 		if h < 3 {
 			h = 3
 		}
@@ -118,7 +118,7 @@ func (m Model) View() string {
 		body = muted.Render("No bookmarks yet. Press 'b' on a row in any tab to add one.")
 	}
 	help := muted.Render("enter: open · d: delete · esc: back")
-	parts := []string{title, body, help}
+	parts := []string{title, "", body, "", help}
 	if m.status != "" {
 		parts = append(parts, muted.Render(m.status))
 	}

@@ -169,7 +169,7 @@ func (m uploadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		h := msg.Height - 12
+		h := msg.Height - 13
 		if h < 5 {
 			h = 5
 		}
@@ -499,7 +499,7 @@ func (m uploadModel) viewPicking(title string) string {
 
 	hint := mutedStyle.Render("enter: enter dir / toggle file · /: filter · ctrl+u: upload · backspace: up a dir · esc: cancel")
 
-	parts := []string{title, dirLine, filterLine, body, "", strings.Join(queueLines, "\n")}
+	parts := []string{title, dirLine, filterLine, "", body, "", strings.Join(queueLines, "\n")}
 	if m.status != "" {
 		parts = append(parts, "", mutedStyle.Render(m.status))
 	}

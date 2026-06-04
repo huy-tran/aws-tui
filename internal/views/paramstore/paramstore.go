@@ -393,7 +393,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		h := msg.Height - 4
+		h := msg.Height - 6
 		if h < 3 {
 			h = 3
 		}
@@ -1456,7 +1456,7 @@ func (m Model) viewList() string {
 		body = mutedStyle.Render("No parameters match filter.")
 	}
 	help := mutedStyle.Render("enter: view · e: edit · n: new · /: filter · r: refresh")
-	parts := []string{header, filterLine, body, help}
+	parts := []string{header, filterLine, "", body, "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))
 	}
@@ -1495,7 +1495,7 @@ func (m Model) viewValue() string {
 	}
 
 	help := mutedStyle.Render("↑/↓ move · r: reveal/mask · y: yank value · Y: yank line · h: history · e: edit · esc: back")
-	parts := []string{title, "", meta, "", mutedStyle.Render(valueLabel), valueBox, help}
+	parts := []string{title, "", meta, "", mutedStyle.Render(valueLabel), valueBox, "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))
 	}
@@ -1584,7 +1584,7 @@ func (m Model) viewHistory() string {
 		body = m.loader.Render("loading history...")
 	}
 	help := mutedStyle.Render("enter: view that version's value · esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, title, body, help)
+	return lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help)
 }
 
 func (m Model) viewEdit() string {

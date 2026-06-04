@@ -412,7 +412,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		h := msg.Height - 4
+		h := msg.Height - 6
 		if h < 3 {
 			h = 3
 		}
@@ -811,7 +811,7 @@ func (m Model) View() string {
 	header := headerStyle.Render(m.breadcrumb())
 
 	if m.level == levelDetail {
-		return lipgloss.JoinVertical(lipgloss.Left, header, m.renderDetail())
+		return lipgloss.JoinVertical(lipgloss.Left, header, "", m.renderDetail())
 	}
 
 	filterLine := m.filter.View()
@@ -841,7 +841,7 @@ func (m Model) View() string {
 		helpLine = mutedStyle.Render("enter: detail · esc: back · /: filter · s: sort (created/completed) · r: refresh")
 	}
 
-	parts := []string{header, filterLine, body, helpLine}
+	parts := []string{header, filterLine, "", body, "", helpLine}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))
 	}

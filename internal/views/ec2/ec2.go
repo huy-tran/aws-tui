@@ -273,8 +273,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Reserve a row for the filter input plus a row for help text.
-		tableHeight := msg.Height - 4
+		// Reserve rows for the filter input, the help text and the blank
+		// spacer above and below the table.
+		tableHeight := msg.Height - 6
 		if tableHeight < 3 {
 			tableHeight = 3
 		}
@@ -715,7 +716,7 @@ func (m Model) View() string {
 		}
 	}
 
-	parts := []string{header, filterLine, body, help}
+	parts := []string{header, filterLine, "", body, "", help}
 	if m.pendingAction != "" {
 		// Confirmation overlay (rendered inline below the list). Border
 		// makes it obvious the focus moved here and esc/enter are the
