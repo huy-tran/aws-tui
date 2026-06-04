@@ -1096,15 +1096,22 @@ func renderToggles(s sevFilter, suppress bool) string {
 func (m Model) viewDetail() string {
 	f := m.targetFinding
 	title := headerStyle.Render(f.Title)
-	meta := strings.Join([]string{
-		field("Severity", renderSeverity(f.Severity)),
-		field("Workflow", emptyDash(f.Workflow)),
-		field("State", emptyDash(f.RecordState)),
-		field("Updated", formatTimeT(f.UpdatedAt)),
-		field("Product", emptyDash(f.ProductName)),
-		field("Region", emptyDash(f.Region)),
-		field("Account", emptyDash(f.AccountID)),
-	}, "\n")
+	compliance := emptyDash(f.Compliance)
+	standards := "-"
+	if len(f.Standards) > 0 {
+		standards = strings.Join(f.Standards, ", ")
+	}
+	meta := datatable.RenderKeyValue("Field", "Value", []datatable.KV{
+		{Key: "Severity", Value: renderSeverity(f.Severity)},
+		{Key: "Workflow", Value: emptyDash(f.Workflow)},
+		{Key: "State", Value: emptyDash(f.RecordState)},
+		{Key: "Updated", Value: formatTimeT(f.UpdatedAt)},
+		{Key: "Product", Value: emptyDash(f.ProductName)},
+		{Key: "Region", Value: emptyDash(f.Region)},
+		{Key: "Account", Value: emptyDash(f.AccountID)},
+		{Key: "Compliance", Value: compliance},
+		{Key: "Standards", Value: standards},
+	}, m.width)
 
 	var resBuilder strings.Builder
 	for _, r := range f.Resources {
@@ -1120,12 +1127,6 @@ func (m Model) viewDetail() string {
 	resources := strings.TrimRight(resBuilder.String(), "\n")
 	if resources == "" {
 		resources = mutedStyle.Render("  (none)")
-	}
-
-	compliance := emptyDash(f.Compliance)
-	standards := "-"
-	if len(f.Standards) > 0 {
-		standards = strings.Join(f.Standards, ", ")
 	}
 
 	descBox := lipgloss.NewStyle().
@@ -1153,8 +1154,6 @@ func (m Model) viewDetail() string {
 		meta, "",
 		mutedStyle.Render("Resources:"),
 		resources, "",
-		field("Compliance", compliance),
-		field("Standards", standards), "",
 		mutedStyle.Render("Description:"),
 		descBox, "",
 		mutedStyle.Render("Remediation:"),
@@ -1165,10 +1164,6 @@ func (m Model) viewDetail() string {
 		parts = append(parts, mutedStyle.Render(m.status))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
-}
-
-func field(label, value string) string {
-	return fmt.Sprintf("  %-12s %s", label+":", value)
 }
 
 func emptyDash(s string) string {

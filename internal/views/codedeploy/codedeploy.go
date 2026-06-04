@@ -883,33 +883,36 @@ func (m Model) breadcrumb() string {
 
 func (m Model) renderDetail() string {
 	d := m.selDep
-	line := func(k, v string) string {
+	dash := func(v string) string {
 		if v == "" {
-			v = mutedStyle.Render("-")
+			return mutedStyle.Render("-")
 		}
-		return labelStyle.Render(fmt.Sprintf("%-14s", k)) + v
+		return v
 	}
-	rows := []string{
-		line("Deployment", d.ID),
-		line("Status", statusBadge(d.Status)),
-		line("Application", d.App),
-		line("Group", d.Group),
-		line("Config", d.ConfigName),
-		line("Creator", d.Creator),
-		line("Created", d.Created),
-		line("Completed", d.Completed),
-		line("Revision", d.Revision),
-		line("Instances", fmt.Sprintf("%d succeeded · %d failed · %d in-progress · %d pending · %d skipped",
-			d.Succeeded, d.Failed, d.InProgress, d.Pending, d.Skipped)),
+	kvs := []datatable.KV{
+		{Key: "Deployment", Value: dash(d.ID)},
+		{Key: "Status", Value: statusBadge(d.Status)},
+		{Key: "Application", Value: dash(d.App)},
+		{Key: "Group", Value: dash(d.Group)},
+		{Key: "Config", Value: dash(d.ConfigName)},
+		{Key: "Creator", Value: dash(d.Creator)},
+		{Key: "Created", Value: dash(d.Created)},
+		{Key: "Completed", Value: dash(d.Completed)},
+		{Key: "Revision", Value: dash(d.Revision)},
+		{Key: "Instances", Value: fmt.Sprintf("%d succeeded · %d failed · %d in-progress · %d pending · %d skipped",
+			d.Succeeded, d.Failed, d.InProgress, d.Pending, d.Skipped)},
 	}
 	if d.Description != "" {
-		rows = append(rows, line("Description", d.Description))
+		kvs = append(kvs, datatable.KV{Key: "Description", Value: d.Description})
 	}
 	if d.ErrCode != "" || d.ErrMessage != "" {
-		rows = append(rows, errorStyle.Render(fmt.Sprintf("%-14s%s %s", "Error", d.ErrCode, d.ErrMessage)))
+		kvs = append(kvs, datatable.KV{Key: "Error", Value: errorStyle.Render(strings.TrimSpace(d.ErrCode + " " + d.ErrMessage))})
 	}
-	rows = append(rows, "", mutedStyle.Render("esc: back to deployments"))
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return lipgloss.JoinVertical(lipgloss.Left,
+		datatable.RenderKeyValue("Field", "Value", kvs, m.width),
+		"",
+		mutedStyle.Render("esc: back to deployments"),
+	)
 }
 
 // ---------- rows ----------
@@ -965,5 +968,4 @@ var (
 	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	mutedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	headerStyle = lipgloss.NewStyle().Bold(true)
-	labelStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 )

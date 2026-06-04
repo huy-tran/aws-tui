@@ -11,6 +11,7 @@ import (
 
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/nav"
+	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 )
 
 // detailsModel is pushed onto the view stack by the EC2 list when the user
@@ -21,6 +22,7 @@ type detailsModel struct {
 	inst         Instance
 	yankPending  bool
 	status       string
+	width        int
 }
 
 func newDetails(ctx *awspkg.Context, inst Instance) detailsModel {
@@ -31,6 +33,9 @@ func (m detailsModel) Init() tea.Cmd { return nil }
 
 func (m detailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		return m, nil
 	case tea.KeyMsg:
 		key := msg.String()
 		if m.yankPending {
@@ -73,57 +78,44 @@ func (m detailsModel) View() string {
 	header := headerStyle.Render(fmt.Sprintf("Instance Details — %s", m.inst.ID))
 	context := mutedStyle.Render(fmt.Sprintf("%s · %s", m.ctx.Profile, m.ctx.Region))
 
-	rows := []string{
-		field("Name", defaultStr(m.inst.Name, "-")),
-		field("Instance ID", m.inst.ID),
-		field("State", m.inst.State),
-		field("Type", m.inst.Type),
-		field("Platform", m.inst.Platform),
-		field("AMI", m.inst.AMIID),
-		field("Launched", m.inst.LaunchTime),
-		"",
-		field("Private IP", defaultStr(m.inst.PrivIP, "-")),
-		field("Public IP", defaultStr(m.inst.PubIP, "-")),
-		field("Public DNS", defaultStr(m.inst.PubDNS, "-")),
-		"",
-		field("VPC", defaultStr(m.inst.VPCID, "-")),
-		field("Subnet", defaultStr(m.inst.SubnetID, "-")),
-		field("AZ", defaultStr(m.inst.AZ, "-")),
-		field("IAM Role", defaultStr(m.inst.IAMRole, "-")),
-		"",
-		field("Security Groups", joinOrDash(m.inst.SecurityGroups)),
-	}
+	body := datatable.RenderKeyValue("Field", "Value", []datatable.KV{
+		{Key: "Name", Value: defaultStr(m.inst.Name, "-")},
+		{Key: "Instance ID", Value: m.inst.ID},
+		{Key: "State", Value: m.inst.State},
+		{Key: "Type", Value: m.inst.Type},
+		{Key: "Platform", Value: m.inst.Platform},
+		{Key: "AMI", Value: m.inst.AMIID},
+		{Key: "Launched", Value: m.inst.LaunchTime},
+		{Key: "Private IP", Value: defaultStr(m.inst.PrivIP, "-")},
+		{Key: "Public IP", Value: defaultStr(m.inst.PubIP, "-")},
+		{Key: "Public DNS", Value: defaultStr(m.inst.PubDNS, "-")},
+		{Key: "VPC", Value: defaultStr(m.inst.VPCID, "-")},
+		{Key: "Subnet", Value: defaultStr(m.inst.SubnetID, "-")},
+		{Key: "AZ", Value: defaultStr(m.inst.AZ, "-")},
+		{Key: "IAM Role", Value: defaultStr(m.inst.IAMRole, "-")},
+		{Key: "Security Groups", Value: joinOrDash(m.inst.SecurityGroups)},
+	}, m.width)
 
+	parts := []string{header, context, "", body}
 	if len(m.inst.Tags) > 0 {
-		rows = append(rows, "", headerStyle.Render("Tags"))
 		tags := append([]TagPair(nil), m.inst.Tags...)
 		sort.Slice(tags, func(i, j int) bool { return tags[i].Key < tags[j].Key })
-		for _, t := range tags {
-			rows = append(rows, "  "+field(t.Key, t.Value))
+		tagKVs := make([]datatable.KV, len(tags))
+		for i, t := range tags {
+			tagKVs[i] = datatable.KV{Key: t.Key, Value: t.Value}
 		}
+		parts = append(parts, "", headerStyle.Render("Tags"),
+			datatable.RenderKeyValue("Tag", "Value", tagKVs, m.width))
 	}
 
 	help := mutedStyle.Render("y i = yank ID · y p = yank private IP · y d = yank public DNS · esc to close")
-
-	body := strings.Join(rows, "\n")
-
-	footer := help
+	parts = append(parts, "")
 	if m.status != "" {
-		footer = lipgloss.JoinVertical(lipgloss.Left, mutedStyle.Render(m.status), help)
+		parts = append(parts, mutedStyle.Render(m.status))
 	}
+	parts = append(parts, help)
 
-	return lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		context,
-		"",
-		body,
-		"",
-		footer,
-	)
-}
-
-func field(label, value string) string {
-	return fmt.Sprintf("  %-18s %s", label+":", value)
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
 func defaultStr(s, fallback string) string {

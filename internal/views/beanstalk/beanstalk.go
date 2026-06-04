@@ -13,6 +13,7 @@ import (
 	ebtypes "github.com/aws/aws-sdk-go-v2/service/elasticbeanstalk/types"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -103,6 +104,7 @@ type Model struct {
 
 	target   Environment
 	events   []Event
+	eventsVP viewport.Model // scrollable full-events view
 	versions []Version
 
 	verTable datatable.Model
@@ -142,7 +144,7 @@ func New(ctx *awspkg.Context) Model {
 	flt.CharLimit = 64
 	flt.Prompt = "/ "
 
-	return Model{ctx: ctx, envTable: envT, verTable: verT, confirm: ti, filter: flt, loader: loader.New(), loading: true}
+	return Model{ctx: ctx, envTable: envT, verTable: verT, confirm: ti, filter: flt, eventsVP: viewport.New(0, 0), loader: loader.New(), loading: true}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -300,6 +302,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.envTable.SetWidth(msg.Width)
 		m.verTable.SetHeight(h - 6)
 		m.verTable.SetWidth(msg.Width)
+		// Events viewport: reserve the title, help and surrounding spacer rows.
+		m.eventsVP.Width = msg.Width
+		m.eventsVP.Height = h
+		m.eventsVP.SetContent(m.eventsContent())
 		return m, nil
 
 	case envsLoadedMsg:
@@ -319,6 +325,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventsLoadedMsg:
 		if msg.env == m.target.EnvName {
 			m.events = msg.events
+			m.eventsVP.SetContent(m.eventsContent())
+			m.eventsVP.GotoTop()
 		}
 		return m, nil
 
@@ -388,7 +396,9 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "r":
 			return m, m.loadEventsCmd(m.target.EnvName)
 		}
-		return m, nil
+		var cmd tea.Cmd
+		m.eventsVP, cmd = m.eventsVP.Update(msg)
+		return m, cmd
 
 	case modeDeploy:
 		switch msg.String() {
@@ -670,17 +680,16 @@ func (m Model) View() string {
 
 func (m Model) viewDetails() string {
 	title := headerStyle.Render(m.target.EnvName)
-	rows := []string{
-		field("Application", m.target.AppName),
-		field("Environment ID", m.target.EnvID),
-		field("CNAME", m.target.CNAME),
-		field("Status", statusBadge(m.target.Status)),
-		field("Health", healthDot(m.target.Health)),
-		field("Version", m.target.Version),
-		field("Tier", m.target.Tier),
-		field("Last updated", m.target.UpdatedAt),
-	}
-	body := strings.Join(rows, "\n")
+	body := datatable.RenderKeyValue("Field", "Value", []datatable.KV{
+		{Key: "Application", Value: m.target.AppName},
+		{Key: "Environment ID", Value: m.target.EnvID},
+		{Key: "CNAME", Value: m.target.CNAME},
+		{Key: "Status", Value: statusBadge(m.target.Status)},
+		{Key: "Health", Value: healthDot(m.target.Health)},
+		{Key: "Version", Value: m.target.Version},
+		{Key: "Tier", Value: m.target.Tier},
+		{Key: "Last updated", Value: m.target.UpdatedAt},
+	}, m.width)
 	evts := mutedStyle.Render("(no recent events loaded)")
 	if len(m.events) > 0 {
 		var sb strings.Builder
@@ -705,13 +714,27 @@ func (m Model) viewEvents() string {
 	if len(m.events) == 0 {
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", mutedStyle.Render("loading events..."))
 	}
+	help := mutedStyle.Render("↑/↓ pgup/pgdn: scroll · r: refresh · esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, title, "", m.eventsVP.View(), "", help)
+}
+
+// eventsContent renders the full event list as colored text lines for the
+// scrollable events viewport. Long messages are word-wrapped to the viewport
+// width (rather than truncated) so the full text stays readable; the viewport
+// scrolls vertically.
+func (m Model) eventsContent() string {
 	var sb strings.Builder
-	for _, e := range m.events {
+	for i, e := range m.events {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
 		sb.WriteString(formatEvent(e))
-		sb.WriteString("\n")
 	}
-	help := mutedStyle.Render("r: refresh · esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, title, "", sb.String(), "", help)
+	content := sb.String()
+	if w := m.eventsVP.Width; w > 0 {
+		content = lipgloss.NewStyle().Width(w).Render(content)
+	}
+	return content
 }
 
 func (m Model) viewDeploy() string {
@@ -830,10 +853,6 @@ func formatTime(t *time.Time) string {
 		return ""
 	}
 	return t.Local().Format("2006-01-02 15:04")
-}
-
-func field(label, value string) string {
-	return fmt.Sprintf("  %-16s %s", label+":", value)
 }
 
 func padRight(s string, n int) string {

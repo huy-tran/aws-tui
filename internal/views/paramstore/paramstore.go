@@ -1465,14 +1465,14 @@ func (m Model) viewList() string {
 
 func (m Model) viewValue() string {
 	title := headerStyle.Render(m.target.Name)
-	meta := strings.Join([]string{
-		field("Type", m.target.Type),
-		field("Version", strconv.FormatInt(m.target.Version, 10)),
-		field("Last mod", m.target.LastModified),
-		field("Mod by", emptyDash(m.target.ModifiedBy)),
-		field("KMS Key", emptyDash(m.target.KMSKeyID)),
-		field("Description", emptyDash(m.target.Description)),
-	}, "\n")
+	meta := datatable.RenderKeyValue("Field", "Value", []datatable.KV{
+		{Key: "Type", Value: m.target.Type},
+		{Key: "Version", Value: strconv.FormatInt(m.target.Version, 10)},
+		{Key: "Last mod", Value: m.target.LastModified},
+		{Key: "Mod by", Value: emptyDash(m.target.ModifiedBy)},
+		{Key: "KMS Key", Value: emptyDash(m.target.KMSKeyID)},
+		{Key: "Description", Value: emptyDash(m.target.Description)},
+	}, boxWidth(m.width))
 
 	valueLabel := "Value"
 	if m.isSecureString() {

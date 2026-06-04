@@ -490,6 +490,77 @@ func (m Model) View() string {
 	return body
 }
 
+// KV is a single field/value pair for RenderKeyValue.
+type KV struct {
+	Key   string
+	Value string
+}
+
+// RenderKeyValue renders a static two-column table using the same borders and
+// header styling as the scrollable table. It is meant for detail panels that
+// show one record's attributes rather than a scrollable list, so it has no
+// cursor, sort or navigation - just the consistent bordered grid.
+//
+// keyHeader / valHeader are the column titles. maxWidth caps the total
+// rendered width: 0 sizes both columns to their content (never truncating);
+// a positive value shrinks (and truncates) the value column so the table fits.
+// Styled (ANSI) values are measured by visible width and only stripped when a
+// genuine truncation is forced.
+func RenderKeyValue(keyHeader, valHeader string, pairs []KV, maxWidth int) string {
+	keyW := lipgloss.Width(keyHeader)
+	valW := lipgloss.Width(valHeader)
+	for _, p := range pairs {
+		if w := lipgloss.Width(p.Key); w > keyW {
+			keyW = w
+		}
+		if w := lipgloss.Width(p.Value); w > valW {
+			valW = w
+		}
+	}
+	// Each cell adds 2 chars of horizontal padding; a two-column table with
+	// BorderColumn(true) adds 3 vertical border characters.
+	overhead := 2*2 + 3
+	if maxWidth > 0 {
+		if total := overhead + keyW + valW; total > maxWidth {
+			valW = maxWidth - overhead - keyW
+			minVal := lipgloss.Width(valHeader)
+			if minVal < 4 {
+				minVal = 4
+			}
+			if valW < minVal {
+				valW = minVal
+			}
+		}
+	}
+
+	rows := make([][]string, len(pairs))
+	for i, p := range pairs {
+		rows[i] = []string{p.Key, truncate(p.Value, valW)}
+	}
+
+	base := lipgloss.NewStyle().Padding(0, 1)
+	header := base.Bold(true).Foreground(lipgloss.Color("252"))
+	t := ltable.New().
+		Border(lipgloss.NormalBorder()).
+		BorderRow(true).
+		BorderColumn(true).
+		BorderStyle(lipgloss.NewStyle().Foreground(theme.Current().BorderFg)).
+		Headers(keyHeader, valHeader).
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			w := keyW
+			if col == 1 {
+				w = valW
+			}
+			s := base.Width(w + 2)
+			if row == ltable.HeaderRow {
+				return header.Width(s.GetWidth())
+			}
+			return s
+		})
+	return t.Render()
+}
+
 // renderSortRibbon shows the column letters / digits the user can press.
 func (m Model) renderSortRibbon() string {
 	var parts []string

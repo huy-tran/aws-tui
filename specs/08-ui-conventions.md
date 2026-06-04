@@ -71,6 +71,23 @@ owns its own cursor + viewport offset.
 - **Navigation keys:** `up/k`, `down/j`, `pgup/ctrl+b`, `pgdown/ctrl+f/space`,
   `home/g` (top), `end/G` (bottom).
 
+### Detail panels (key/value tables)
+
+Detail screens that show a single record's attributes (EC2 instance details,
+Beanstalk / RDS / CodeDeploy / SecurityHub detail, Parameter Store value
+metadata) render as a static two-column `Field` / `Value` table via
+`datatable.RenderKeyValue`, NOT as a list of `label: value` text lines. This
+keeps detail panels visually consistent with the scrollable lists.
+
+- Same borders and header styling as the scrollable table, but no cursor, no
+  sort and no navigation - it's a static grid.
+- The `Value` column is content-sized; pass the view width as `maxWidth` so a
+  long value (e.g. a CNAME or ARN) is truncated to fit rather than wrapping.
+- Use meaningful column titles when the pairs aren't generic attributes (e.g.
+  `Tag` / `Value` for an EC2 instance's tags).
+- Styled values (status badges, health dots, severity) pass straight through
+  as cell content.
+
 ## Help overlay
 
 Press `?` for a centered overlay of keybindings.

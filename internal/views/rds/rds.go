@@ -641,21 +641,21 @@ func (m Model) viewList() string {
 func (m Model) viewDetails() string {
 	d := m.target
 	title := headerStyle.Render(d.ID)
-	body := strings.Join([]string{
-		field("Engine", d.Engine+" "+d.EngineVersion),
-		field("Class", d.Class),
-		field("Status", statusBadge(d.Status)),
-		field("Multi-AZ", boolLabel(d.MultiAZ)),
-		field("Endpoint", emptyDash(d.Endpoint)),
-		field("Port", strconv.FormatInt(int64(d.Port), 10)),
-		field("DB name", emptyDash(d.DBName)),
-		field("Master user", emptyDash(d.MasterUser)),
-		field("VPC", emptyDash(d.VPC)),
-		field("Subnet grp", emptyDash(d.SubnetGroup)),
-		field("Security", strings.Join(d.SecurityGroups, ", ")),
-		field("Storage", storageLabel(d)),
-		field("Created", emptyDash(d.Created)),
-	}, "\n")
+	body := datatable.RenderKeyValue("Field", "Value", []datatable.KV{
+		{Key: "Engine", Value: d.Engine + " " + d.EngineVersion},
+		{Key: "Class", Value: d.Class},
+		{Key: "Status", Value: statusBadge(d.Status)},
+		{Key: "Multi-AZ", Value: boolLabel(d.MultiAZ)},
+		{Key: "Endpoint", Value: emptyDash(d.Endpoint)},
+		{Key: "Port", Value: strconv.FormatInt(int64(d.Port), 10)},
+		{Key: "DB name", Value: emptyDash(d.DBName)},
+		{Key: "Master user", Value: emptyDash(d.MasterUser)},
+		{Key: "VPC", Value: emptyDash(d.VPC)},
+		{Key: "Subnet grp", Value: emptyDash(d.SubnetGroup)},
+		{Key: "Security", Value: strings.Join(d.SecurityGroups, ", ")},
+		{Key: "Storage", Value: storageLabel(d)},
+		{Key: "Created", Value: emptyDash(d.Created)},
+	}, m.width)
 	help := mutedStyle.Render("f: port-forward · y: yank menu · esc: back")
 	parts := []string{title, "", body, "", help}
 	if m.status != "" {
@@ -681,10 +681,6 @@ func (m Model) viewPortForward() string {
 		parts = append(parts, mutedStyle.Render(m.status))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
-}
-
-func field(label, value string) string {
-	return fmt.Sprintf("  %-14s %s", label+":", value)
 }
 
 func focusLabel(label string, focused bool) string {
