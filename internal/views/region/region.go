@@ -3,11 +3,11 @@ package region
 import (
 	"context"
 	"encoding/gob"
+	"strings"
 	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	ec2sdk "github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -15,26 +15,12 @@ import (
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/nav"
 	"github.com/huy-tran/aws-tui/internal/state"
+	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 )
 
 const optInCacheTTL = 30 * time.Minute
 
 func init() { gob.Register(map[string]string{}) }
-
-type regionItem struct {
-	code  string
-	name  string
-	badge string // styled badge string; empty until probe completes
-}
-
-func (r regionItem) Title() string { return r.code }
-func (r regionItem) Description() string {
-	if r.badge == "" {
-		return r.name
-	}
-	return r.name + "  " + r.badge
-}
-func (r regionItem) FilterValue() string { return r.code + " " + r.name }
 
 var regionNames = map[string]string{
 	"ap-southeast-2": "Sydney",
@@ -53,10 +39,15 @@ var regionNames = map[string]string{
 type Model struct {
 	ctx        *awspkg.Context
 	state      *state.Store
-	list       list.Model
+	table      datatable.Model
+	filter     textinput.Model
+	filterMode bool
 	customMode bool
 	custom     textinput.Model
-	badges     map[string]string
+	badges     map[string]string // region code -> styled opt-in badge
+	displayed  []string          // visible region codes after filter
+	width      int
+	height     int
 }
 
 type (
@@ -65,31 +56,34 @@ type (
 )
 
 func New(ctx *awspkg.Context, store *state.Store) Model {
-	items := make([]list.Item, 0, len(awspkg.CommonRegions))
-	for _, code := range awspkg.CommonRegions {
-		items = append(items, regionItem{code: code, name: regionNames[code]})
+	cols := []datatable.Column{
+		{Title: "Region"},
+		{Title: "Name", Flex: true},
+		{Title: "Status"},
 	}
+	t := datatable.New(cols)
+	t.SetHeight(20)
 
-	delegate := list.NewDefaultDelegate()
-	l := list.New(items, delegate, 0, 0)
-	l.Title = "Select Region (profile: " + ctx.Profile + ")"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-
-	if lastRegion := store.LastRegionFor(ctx.Profile); lastRegion != "" {
-		for i, item := range items {
-			if ri, ok := item.(regionItem); ok && ri.code == lastRegion {
-				l.Select(i)
-				break
-			}
-		}
-	}
+	flt := textinput.New()
+	flt.Placeholder = "filter by code / name"
+	flt.CharLimit = 32
+	flt.Prompt = "/ "
 
 	ti := textinput.New()
 	ti.Placeholder = "e.g. me-south-1"
 	ti.CharLimit = 20
 
-	return Model{ctx: ctx, state: store, list: l, custom: ti}
+	m := Model{ctx: ctx, state: store, table: t, filter: flt, custom: ti}
+	m.applyFilter()
+	if last := store.LastRegionFor(ctx.Profile); last != "" {
+		for i, code := range m.displayed {
+			if code == last {
+				m.table.SetCursor(i)
+				break
+			}
+		}
+	}
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
@@ -97,7 +91,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 // probeRegionsCmd calls ec2.DescribeRegions once at picker entry so the
-// list can show which regions the active profile can actually hit.
+// table can show which regions the active profile can actually hit.
 // Cached at the aws.Cache layer; degrades to "no badges" on any error.
 func (m Model) probeRegionsCmd() tea.Cmd {
 	ctx := m.ctx
@@ -140,55 +134,76 @@ func (m Model) probeRegionsCmd() tea.Cmd {
 var (
 	okBadge    = lipgloss.NewStyle().Foreground(lipgloss.Color("34")).Bold(true).Render("✓")
 	optInBadge = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true).Render("⚠ opt-in needed")
+
+	mutedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	headerStyle = lipgloss.NewStyle().Bold(true)
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width-4, msg.Height-4)
+		m.width = msg.Width
+		m.height = msg.Height
+		h := msg.Height - 6
+		if h < 3 {
+			h = 3
+		}
+		m.table.SetHeight(h)
+		m.table.SetWidth(msg.Width)
 		return m, nil
 
 	case probeResultMsg:
 		m.badges = msg.badges
-		items := make([]list.Item, 0, len(awspkg.CommonRegions))
-		for _, code := range awspkg.CommonRegions {
-			items = append(items, regionItem{
-				code:  code,
-				name:  regionNames[code],
-				badge: m.badges[code],
-			})
-		}
-		_ = m.list.SetItems(items)
+		m.applyFilter()
 		return m, nil
 
 	case probeErrMsg:
-		// Best-effort: degrade silently to no-badge listing.
+		// Best-effort: degrade silently to a no-badge listing.
 		return m, nil
 
 	case tea.KeyMsg:
 		if m.customMode {
 			switch msg.String() {
 			case "enter":
-				region := m.custom.Value()
+				region := strings.TrimSpace(m.custom.Value())
 				if region != "" {
 					return m, m.selectRegion(region)
 				}
 			case "esc":
 				m.customMode = false
+				m.custom.Blur()
 				return m, nil
 			}
 			var cmd tea.Cmd
 			m.custom, cmd = m.custom.Update(msg)
 			return m, cmd
 		}
-
-		if m.list.FilterState() == list.Filtering {
-			break
+		if m.filterMode {
+			switch msg.String() {
+			case "esc":
+				m.filterMode = false
+				m.filter.SetValue("")
+				m.filter.Blur()
+				m.applyFilter()
+				return m, nil
+			case "enter":
+				m.filterMode = false
+				m.filter.Blur()
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.filter, cmd = m.filter.Update(msg)
+			m.applyFilter()
+			return m, cmd
 		}
 		switch msg.String() {
+		case "/":
+			m.filterMode = true
+			m.filter.Focus()
+			return m, textinput.Blink
 		case "enter":
-			if it, ok := m.list.SelectedItem().(regionItem); ok {
-				return m, m.selectRegion(it.code)
+			if code := m.selected(); code != "" {
+				return m, m.selectRegion(code)
 			}
 		case "+":
 			m.customMode = true
@@ -200,8 +215,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
+	m.table, cmd = m.table.Update(msg)
 	return m, cmd
+}
+
+// applyFilter rebuilds m.displayed and the table rows from the current filter
+// text and the latest opt-in badges.
+func (m *Model) applyFilter() {
+	q := strings.ToLower(strings.TrimSpace(m.filter.Value()))
+	out := make([]string, 0, len(awspkg.CommonRegions))
+	rows := make([]datatable.Row, 0, len(awspkg.CommonRegions))
+	for _, code := range awspkg.CommonRegions {
+		name := regionNames[code]
+		if q != "" && !strings.Contains(strings.ToLower(code), q) && !strings.Contains(strings.ToLower(name), q) {
+			continue
+		}
+		out = append(out, code)
+		rows = append(rows, datatable.Row{code, name, m.badges[code]})
+	}
+	m.displayed = out
+	m.table.SetRows(rows)
+}
+
+func (m Model) selected() string {
+	idx := m.table.Cursor()
+	if idx < 0 || idx >= len(m.displayed) {
+		return ""
+	}
+	return m.displayed[idx]
+}
+
+// CapturingInput tells the app whether a focused input is consuming text so
+// global keys like '?' aren't swallowed.
+func (m Model) CapturingInput() bool {
+	return m.filterMode || m.customMode || m.table.CapturingInput()
 }
 
 func (m Model) selectRegion(region string) tea.Cmd {
@@ -214,9 +261,23 @@ func (m Model) selectRegion(region string) tea.Cmd {
 
 func (m Model) View() string {
 	if m.customMode {
-		return lipgloss.NewStyle().Padding(1, 2).Render(
-			"Enter region code:\n\n" + m.custom.View() + "\n\nenter to confirm · esc to cancel",
+		return lipgloss.JoinVertical(lipgloss.Left,
+			headerStyle.Render("Enter region code"),
+			"",
+			m.custom.View(),
+			"",
+			mutedStyle.Render("enter: confirm · esc: cancel"),
 		)
 	}
-	return lipgloss.NewStyle().Padding(1, 2).Render(m.list.View())
+	header := headerStyle.Render("Select Region (profile: " + m.ctx.Profile + ")")
+	filterLine := m.filter.View()
+	if !m.filterMode && m.filter.Value() == "" {
+		filterLine = mutedStyle.Render("press / to filter")
+	}
+	body := m.table.View()
+	if len(m.displayed) == 0 {
+		body = mutedStyle.Render("No regions match filter.")
+	}
+	help := mutedStyle.Render("enter: select · +: custom region · /: filter · esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, header, filterLine, "", body, "", help)
 }

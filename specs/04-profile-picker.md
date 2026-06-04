@@ -1,6 +1,16 @@
 # 04 — Profile Picker
 
-The first screen. Shows the list of profiles from `~/.aws/config`, fuzzy-filterable, with metadata.
+The first screen. Shows the list of profiles from `~/.aws/config`, filterable, with metadata.
+
+> **Update — table-based picker.** The picker now renders with the shared
+> `internal/ui/datatable` component instead of `bubbles/list`, so it matches
+> every other list surface in the app. Columns: `Profile` (flex) / `Source` /
+> `Default Region`. The screen is a `header` line, a `/`-activated filter line,
+> the bordered table, then a help line, with a blank spacer row between the
+> filter and the table and between the table and the help line. The last-used
+> profile is pre-selected via the table cursor; `enter` still emits
+> `nav.ProfileSelectedMsg`. The `bubbles/list` sample below is retained for
+> historical context only.
 
 ## Layout
 

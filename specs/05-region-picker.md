@@ -2,6 +2,15 @@
 
 Shown after profile selection. Defaults to the profile's configured region (if any) or the last-used region for that profile.
 
+> **Update — table-based picker.** The picker now renders with the shared
+> `internal/ui/datatable` component instead of `bubbles/list`, matching the
+> profile picker and every other list surface. Columns: `Region` / `Name`
+> (flex) / `Status` (the opt-in badge from the `DescribeRegions` probe). The
+> screen is a `header` line, a `/`-activated filter line, the bordered table,
+> then a help line, with blank spacer rows around the table. `enter` selects
+> the highlighted region, `+` opens the custom-region input, `esc` pops back.
+> The `bubbles/list` sample below is retained for historical context only.
+
 ## Layout
 
 ```

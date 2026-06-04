@@ -124,7 +124,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		inner := tea.WindowSizeMsg{
 			Width:  msg.Width,
-			Height: msg.Height - 6, // header + tabs + footer + breathing room + two spacer rows
+			Height: msg.Height - 7, // header + tabs + footer + breathing room + three spacer rows
 		}
 		for i := range m.tabs {
 			updated, _ := m.tabs[i].Update(inner)
@@ -265,12 +265,13 @@ func (m Model) View() string {
 	tabs := m.renderTabs()
 	footer := m.renderFooter()
 
-	// Two blank spacer rows separate the tab bar (top bar) from the table and
-	// the table from the footer; subtract them so the content still fits.
-	contentHeight := m.height - lipgloss.Height(header) - lipgloss.Height(tabs) - lipgloss.Height(footer) - 2
+	// Three blank spacer rows: between the header and the tab bar, between
+	// the tab bar and the table, and between the table and the footer.
+	// Subtract them so the content still fits the available height.
+	contentHeight := m.height - lipgloss.Height(header) - lipgloss.Height(tabs) - lipgloss.Height(footer) - 3
 	content := lipgloss.NewStyle().Height(contentHeight).Render(m.tabs[m.active].View())
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, tabs, "", content, "", footer)
+	return lipgloss.JoinVertical(lipgloss.Left, header, "", tabs, "", content, "", footer)
 }
 
 func (m Model) renderHeader() string {
