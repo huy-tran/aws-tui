@@ -20,6 +20,7 @@ import (
 	"github.com/huy-tran/aws-tui/internal/audit"
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/nav"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -107,29 +108,29 @@ type powerDoneMsg struct {
 }
 
 type Model struct {
-	ctx        *awspkg.Context
-	table      datatable.Model
-	loader     loader.Model
-	filter     textinput.Model
-	filterMode bool
-	instances  []Instance // full list as returned by DescribeInstances
-	displayed  []Instance // visible after filter; equals instances when no filter
-	stateFilterIdx int    // index into stateFilters; selects which states show
-	statePicking   bool   // true while the "press a state number" ribbon is up
-	loading    bool
-	err        error
-	width      int
-	height     int
-	lastLoaded time.Time
-	status     string
+	ctx            *awspkg.Context
+	table          datatable.Model
+	loader         loader.Model
+	filter         textinput.Model
+	filterMode     bool
+	instances      []Instance // full list as returned by DescribeInstances
+	displayed      []Instance // visible after filter; equals instances when no filter
+	stateFilterIdx int        // index into stateFilters; selects which states show
+	statePicking   bool       // true while the "press a state number" ribbon is up
+	loading        bool
+	err            error
+	width          int
+	height         int
+	lastLoaded     time.Time
+	status         string
 
 	// Power action confirmation state. pendingAction != "" means the
 	// list view is overlayed by a confirm prompt waiting on the user
 	// to type the target instance ID. Inflight is true once the SDK
 	// call is on the wire; the spinner shares loader.
-	pendingAction powerAction
-	pendingTarget Instance
-	confirmInput  textinput.Model
+	pendingAction  powerAction
+	pendingTarget  Instance
+	confirmInput   textinput.Model
 	actionInFlight bool
 }
 
@@ -222,12 +223,12 @@ func sortInstancesByName(instances []Instance) {
 
 func parseInstance(inst types.Instance) Instance {
 	out := Instance{
-		ID:     awssdk.ToString(inst.InstanceId),
-		Type:   string(inst.InstanceType),
-		PrivIP: awssdk.ToString(inst.PrivateIpAddress),
-		PubIP:  awssdk.ToString(inst.PublicIpAddress),
-		PubDNS: awssdk.ToString(inst.PublicDnsName),
-		VPCID:  awssdk.ToString(inst.VpcId),
+		ID:       awssdk.ToString(inst.InstanceId),
+		Type:     string(inst.InstanceType),
+		PrivIP:   awssdk.ToString(inst.PrivateIpAddress),
+		PubIP:    awssdk.ToString(inst.PublicIpAddress),
+		PubDNS:   awssdk.ToString(inst.PublicDnsName),
+		VPCID:    awssdk.ToString(inst.VpcId),
 		SubnetID: awssdk.ToString(inst.SubnetId),
 		AMIID:    awssdk.ToString(inst.ImageId),
 	}
@@ -238,7 +239,7 @@ func parseInstance(inst types.Instance) Instance {
 		out.AZ = awssdk.ToString(inst.Placement.AvailabilityZone)
 	}
 	if inst.LaunchTime != nil {
-		out.LaunchTime = inst.LaunchTime.Format(time.RFC3339)
+		out.LaunchTime = timefmt.Zone(*inst.LaunchTime, "2006-01-02 15:04:05")
 	}
 	if inst.IamInstanceProfile != nil {
 		// ARN is like arn:aws:iam::123:instance-profile/Foo

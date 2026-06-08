@@ -18,6 +18,7 @@ import (
 
 	"github.com/huy-tran/aws-tui/internal/audit"
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -30,6 +31,7 @@ func init() {
 	gob.Register([]Distribution(nil))
 	gob.Register([]Invalidation(nil))
 }
+
 const invalidationsCacheTTL = 30 * time.Second
 const invalidationPollInterval = 5 * time.Second
 
@@ -86,16 +88,16 @@ type Model struct {
 	status      string
 
 	// invalidation modal state
-	paths     textarea.Model
-	wildcard  textinput.Model
-	target    Distribution
-	pending   []string
+	paths    textarea.Model
+	wildcard textinput.Model
+	target   Distribution
+	pending  []string
 
 	// invalidations history state
-	histTable    datatable.Model
-	hist         []Invalidation
-	histLoading  bool
-	histPolling  bool
+	histTable   datatable.Model
+	hist        []Invalidation
+	histLoading bool
+	histPolling bool
 
 	loader     loader.Model
 	lastLoaded time.Time
@@ -222,7 +224,7 @@ func (m Model) loadInvalidationsCmd(distID string, force bool) tea.Cmd {
 					Status: awssdk.ToString(inv.Status),
 				}
 				if inv.CreateTime != nil {
-					it.Created = inv.CreateTime.Local().Format("2006-01-02 15:04:05")
+					it.Created = timefmt.Zone(*inv.CreateTime, "2006-01-02 15:04:05")
 				}
 				items = append(items, it)
 			}

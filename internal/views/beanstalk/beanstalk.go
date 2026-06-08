@@ -19,6 +19,7 @@ import (
 
 	"github.com/huy-tran/aws-tui/internal/audit"
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -31,6 +32,7 @@ func init() {
 	gob.Register([]Environment(nil))
 	gob.Register([]Version(nil))
 }
+
 const versionsCacheTTL = 5 * time.Minute
 const envsPollInterval = 10 * time.Second
 
@@ -61,8 +63,8 @@ type Version struct {
 }
 
 type (
-	envsLoadedMsg     struct{ items []Environment }
-	eventsLoadedMsg   struct {
+	envsLoadedMsg   struct{ items []Environment }
+	eventsLoadedMsg struct {
 		env    string
 		events []Event
 	}
@@ -70,12 +72,12 @@ type (
 		app      string
 		versions []Version
 	}
-	deployStartedMsg  struct {
+	deployStartedMsg struct {
 		env    string
 		dryRun bool
 	}
-	tickMsg           struct{}
-	errMsg            struct{ err error }
+	tickMsg struct{}
+	errMsg  struct{ err error }
 )
 
 type mode int
@@ -89,8 +91,8 @@ const (
 )
 
 type Model struct {
-	ctx   *awspkg.Context
-	mode  mode
+	ctx  *awspkg.Context
+	mode mode
 
 	envs       []Environment
 	envsFilt   []Environment
@@ -782,7 +784,7 @@ func buildVersionRows(versions []Version) []datatable.Row {
 }
 
 func formatEvent(e Event) string {
-	ts := e.Time.Format("15:04:05")
+	ts := timefmt.Zone(e.Time, "15:04:05")
 	sev := strings.ToUpper(e.Severity)
 	style := mutedStyle
 	switch sev {
@@ -852,7 +854,7 @@ func formatTime(t *time.Time) string {
 	if t == nil {
 		return ""
 	}
-	return t.Local().Format("2006-01-02 15:04")
+	return timefmt.Zone(*t, "2006-01-02 15:04")
 }
 
 func padRight(s string, n int) string {

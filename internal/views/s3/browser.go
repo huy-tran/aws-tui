@@ -17,6 +17,7 @@ import (
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/nav"
 	"github.com/huy-tran/aws-tui/internal/state"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -167,7 +168,7 @@ func formatTime(t *time.Time) string {
 	if t == nil {
 		return ""
 	}
-	return t.Local().Format("2006-01-02 15:04")
+	return timefmt.Zone(*t, "2006-01-02 15:04")
 }
 
 func (m browserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

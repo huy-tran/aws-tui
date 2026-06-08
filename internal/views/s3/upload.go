@@ -22,6 +22,7 @@ import (
 
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/nav"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -384,7 +385,7 @@ func buildLocalRows(entries []localEntry, queued map[string]bool) []datatable.Ro
 		if !e.isDir {
 			size = humanBytes(e.size)
 		}
-		modified := e.modified.Local().Format("2006-01-02 15:04")
+		modified := timefmt.Zone(e.modified, "2006-01-02 15:04")
 		rows[i] = datatable.Row{name, size, modified}
 	}
 	return rows
@@ -616,4 +617,3 @@ func (m uploadModel) HelpItems() []help.Section {
 		},
 	}}
 }
-

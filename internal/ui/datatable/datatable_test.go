@@ -191,6 +191,31 @@ func TestSortByNumericColumn(t *testing.T) {
 	}
 }
 
+func TestSortByTimeColumnWithZone(t *testing.T) {
+	m := New([]Column{
+		{Title: "Name"},
+		{Title: "Created", SortAs: SortTime},
+	})
+	m.SetHeight(20)
+	// Displayed timestamps carry a trailing local-zone abbreviation (and the
+	// abbreviation can differ across DST). Sorting must order them by the
+	// wall-clock time, not lexically by the whole string.
+	m.SetRows([]Row{
+		{"a", "2026-06-08 10:00:00 AEST"},
+		{"b", "2026-06-08 09:00:00 AEST"},
+		{"c", "2026-06-08 11:00:00 AEDT"},
+	})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	got := []string{m.rows[0][0], m.rows[1][0], m.rows[2][0]}
+	want := []string{"b", "a", "c"}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("time sort mismatch at %d: got %v want %v", i, got, want)
+		}
+	}
+}
+
 func TestSortCancelWithEsc(t *testing.T) {
 	m := New([]Column{{Title: "Name"}})
 	m.SetHeight(10)

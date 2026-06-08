@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	logs "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	logstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -24,6 +24,7 @@ import (
 
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/events"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -36,6 +37,7 @@ func init() {
 	gob.Register([]LogGroup(nil))
 	gob.Register([]LogStream(nil))
 }
+
 const groupsCacheTTL = 60 * time.Second
 const streamsCacheTTL = 30 * time.Second
 
@@ -47,8 +49,8 @@ type LogGroup struct {
 }
 
 type LogStream struct {
-	Name       string
-	LastEvent  time.Time
+	Name      string
+	LastEvent time.Time
 }
 
 type LogEvent struct {
@@ -58,7 +60,7 @@ type LogEvent struct {
 }
 
 type (
-	groupsLoadedMsg  struct {
+	groupsLoadedMsg struct {
 		items []LogGroup
 		token string // next pagination token, empty if no more
 	}
@@ -114,19 +116,19 @@ const (
 )
 
 type Model struct {
-	ctx     *awspkg.Context
-	mode    mode
-	width   int
-	height  int
+	ctx    *awspkg.Context
+	mode   mode
+	width  int
+	height int
 
-	groups       []LogGroup
-	groupsFilt   []LogGroup
-	groupsToken  string
-	groupsTable  datatable.Model
+	groups        []LogGroup
+	groupsFilt    []LogGroup
+	groupsToken   string
+	groupsTable   datatable.Model
 	groupsLoading bool
 
-	filter      textinput.Model
-	filterMode  bool
+	filter     textinput.Model
+	filterMode bool
 
 	target  LogGroup
 	streams []LogStream
@@ -145,12 +147,12 @@ type Model struct {
 	findMatches []int
 	findCursor  int
 
-	pattern      textinput.Model
+	pattern       textinput.Model
 	selectedRange timeRange
 
-	viewport     viewport.Model
-	results      []LogEvent
-	resultsTitle string
+	viewport      viewport.Model
+	results       []LogEvent
+	resultsTitle  string
 	searchLoading bool
 
 	// jsonPretty toggles JSON-aware reformatting in stream-events, search
@@ -162,17 +164,17 @@ type Model struct {
 	// is running; calling it tears the stream down. parked holds lines
 	// received while the user paused auto-scroll so they replay on
 	// resume.
-	tailViewport     viewport.Model
-	tailLines        []LogEvent
-	tailParked       []LogEvent
-	tailFilter       *regexp.Regexp
-	tailFilterRaw    string
-	tailFilterMode   bool
-	tailFilterInput  textinput.Model
-	tailPaused       bool
-	tailStarted      time.Time
-	tailReason       string
-	tailCancel       context.CancelFunc
+	tailViewport    viewport.Model
+	tailLines       []LogEvent
+	tailParked      []LogEvent
+	tailFilter      *regexp.Regexp
+	tailFilterRaw   string
+	tailFilterMode  bool
+	tailFilterInput textinput.Model
+	tailPaused      bool
+	tailStarted     time.Time
+	tailReason      string
+	tailCancel      context.CancelFunc
 
 	loader     loader.Model
 	lastLoaded time.Time
@@ -1322,7 +1324,7 @@ func (m Model) View() string {
 		}
 		startedAt := "—"
 		if !m.tailStarted.IsZero() {
-			startedAt = m.tailStarted.Format("15:04:05")
+			startedAt = timefmt.Zone(m.tailStarted, "15:04:05")
 		}
 		bannerParts := []string{state, fmt.Sprintf("%d lines", len(m.tailLines)), "started " + startedAt}
 		if m.tailFilterRaw != "" {
@@ -1388,7 +1390,7 @@ func buildStreamRows(items []LogStream) []datatable.Row {
 	for i, s := range items {
 		last := "-"
 		if !s.LastEvent.IsZero() {
-			last = s.LastEvent.Format("2006-01-02 15:04:05")
+			last = timefmt.Zone(s.LastEvent, "2006-01-02 15:04:05")
 		}
 		rows[i] = datatable.Row{s.Name, last}
 	}
@@ -1441,7 +1443,7 @@ func renderEventsFindable(events []LogEvent, width int, colorize bool, query str
 // pretty rewrites JSON-shaped messages with json.MarshalIndent so they
 // span multiple lines instead of one long ugly blob.
 func formatLogLine(e LogEvent, colorize bool, findRe *regexp.Regexp, pretty bool) string {
-	ts := e.Time.Format("15:04:05")
+	ts := timefmt.Zone(e.Time, "15:04:05")
 	stream := "[" + shortStream(e.Stream) + "]"
 	msg := e.Message
 	if pretty {
@@ -1546,12 +1548,12 @@ var (
 	mutedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	headerStyle = lipgloss.NewStyle().Bold(true)
 
-	logTimeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	logStreamStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
-	logErrorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
-	logWarnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	logInfoStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
-	logDebugStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	logTimeStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	logStreamStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+	logErrorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
+	logWarnStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	logInfoStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	logDebugStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	findHighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color("220")).Foreground(lipgloss.Color("16")).Bold(true)
 )
 

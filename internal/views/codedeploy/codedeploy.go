@@ -21,6 +21,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -85,8 +86,8 @@ type Deployment struct {
 }
 
 type (
-	appsLoadedMsg        struct{ items []App }
-	groupsLoadedMsg      struct {
+	appsLoadedMsg   struct{ items []App }
+	groupsLoadedMsg struct {
 		app   string
 		items []Group
 	}
@@ -110,12 +111,12 @@ type Model struct {
 	ctx   *awspkg.Context
 	level level
 
-	apps   []App
-	appsF  []App
-	groups []Group
+	apps    []App
+	appsF   []App
+	groups  []Group
 	groupsF []Group
-	deps   []Deployment
-	depsF  []Deployment
+	deps    []Deployment
+	depsF   []Deployment
 
 	appTable    datatable.Model
 	groupTable  datatable.Model
@@ -402,7 +403,7 @@ func fmtTime(t *time.Time) string {
 	if t == nil {
 		return ""
 	}
-	return t.Local().Format("2006-01-02 15:04:05")
+	return timefmt.Zone(*t, "2006-01-02 15:04:05")
 }
 
 // ---------- update ----------

@@ -9,16 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	rdssdk "github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -68,19 +69,19 @@ type Model struct {
 	width  int
 	height int
 
-	instances []DBInstance
-	displayed []DBInstance
-	table     datatable.Model
-	filter    textinput.Model
+	instances  []DBInstance
+	displayed  []DBInstance
+	table      datatable.Model
+	filter     textinput.Model
 	filterMode bool
 
 	target      DBInstance
 	yankPending bool
 
-	bastionInput  textinput.Model
-	remotePortIn  textinput.Model
-	localPortIn   textinput.Model
-	pfFocus       int // 0 bastion, 1 remote, 2 local
+	bastionInput textinput.Model
+	remotePortIn textinput.Model
+	localPortIn  textinput.Model
+	pfFocus      int // 0 bastion, 1 remote, 2 local
 
 	loading    bool
 	loader     loader.Model
@@ -189,7 +190,7 @@ func parseInstance(d rdstypes.DBInstance) DBInstance {
 		out.SecurityGroups = append(out.SecurityGroups, awssdk.ToString(sg.VpcSecurityGroupId))
 	}
 	if d.InstanceCreateTime != nil {
-		out.Created = d.InstanceCreateTime.Local().Format("2006-01-02 15:04:05")
+		out.Created = timefmt.Zone(*d.InstanceCreateTime, "2006-01-02 15:04:05")
 	}
 	return out
 }

@@ -10,16 +10,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	sh "github.com/aws/aws-sdk-go-v2/service/securityhub"
 	shtypes "github.com/aws/aws-sdk-go-v2/service/securityhub/types"
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
+	"github.com/huy-tran/aws-tui/internal/timefmt"
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
@@ -81,9 +82,9 @@ type (
 		groups  []InsightResult
 	}
 	findingsLoadedMsg struct {
-		scope    string
-		items    []Finding
-		capped   bool
+		scope  string
+		items  []Finding
+		capped bool
 	}
 	errMsg struct{ err error }
 )
@@ -140,13 +141,13 @@ type Model struct {
 	results       []InsightResult
 	resultTable   datatable.Model
 
-	findingsScope string
+	findingsScope  string
 	findingsCapped bool
-	findings      []Finding
-	findingsFilt  []Finding
-	findingsTable datatable.Model
-	sev           sevFilter
-	showSuppress  bool
+	findings       []Finding
+	findingsFilt   []Finding
+	findingsTable  datatable.Model
+	sev            sevFilter
+	showSuppress   bool
 
 	targetFinding Finding
 	yankPending   bool
@@ -1177,7 +1178,7 @@ func formatTimeT(t time.Time) string {
 	if t.IsZero() {
 		return "-"
 	}
-	return t.Local().Format("2006-01-02 15:04:05")
+	return timefmt.Zone(t, "2006-01-02 15:04:05")
 }
 
 func boxWidth(viewWidth int) int {

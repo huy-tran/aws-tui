@@ -144,13 +144,33 @@ func compareCells(a, b string, kind SortKind) bool {
 			return fa < fb
 		}
 	case SortTime:
-		ta, oka := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(a))
-		tb, okb := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(b))
-		if oka == nil && okb == nil {
+		ta, oka := parseTableTime(a)
+		tb, okb := parseTableTime(b)
+		if oka && okb {
 			return ta.Before(tb)
 		}
 	}
 	return strings.ToLower(a) < strings.ToLower(b)
+}
+
+// parseTableTime parses a displayed timestamp for sorting. Displayed times
+// carry a trailing timezone abbreviation (e.g. "2026-06-08 15:04:05 AEST");
+// we strip it and parse the wall-clock portion in a fixed zone so ordering is
+// consistent and independent of DST naming.
+func parseTableTime(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	// Drop a trailing zone token (letters/+/-, no digits or ':') if present.
+	if i := strings.LastIndex(s, " "); i != -1 {
+		if tail := s[i+1:]; tail != "" && !strings.ContainsAny(tail, "0123456789:") {
+			s = s[:i]
+		}
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // parseLeadingNumber pulls the leading numeric prefix from s. "423"
