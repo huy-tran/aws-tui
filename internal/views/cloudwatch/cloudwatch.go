@@ -317,30 +317,58 @@ func (m Model) loadStreamsCmd(group string) tea.Cmd {
 	}
 }
 
+// streamEventsWant is how many of the most recent events we try to collect
+// for a single stream view.
+const streamEventsWant = 1000
+
 func (m Model) loadStreamEventsCmd(group, stream string) tea.Cmd {
 	ctx := m.ctx
 	return func() tea.Msg {
 		client := ctx.Logs()
-		out, err := client.GetLogEvents(context.Background(), &logs.GetLogEventsInput{
-			LogGroupName:  awssdk.String(group),
-			LogStreamName: awssdk.String(stream),
-			Limit:         awssdk.Int32(1000),
-			StartFromHead: awssdk.Bool(false),
-		})
-		if err != nil {
-			return errMsg{err: err}
-		}
-		events := make([]LogEvent, 0, len(out.Events))
-		for _, e := range out.Events {
-			ts := time.Time{}
-			if e.Timestamp != nil {
-				ts = time.UnixMilli(*e.Timestamp).Local()
-			}
-			events = append(events, LogEvent{
-				Time:    ts,
-				Stream:  stream,
-				Message: awssdk.ToString(e.Message),
+		// GetLogEvents can return an empty or only partially full page even
+		// when the stream has plenty of events - an empty page does NOT mean
+		// pagination is done. We must keep following nextBackwardToken (which
+		// walks toward older events) until we've gathered enough or the token
+		// stops advancing. Without this, streams whose first page comes back
+		// empty render as "0 events / (no matches)" even though the console
+		// shows them. See:
+		// https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_GetLogEvents.html
+		events := make([]LogEvent, 0, streamEventsWant)
+		var token *string
+		// Bound the loop so a pathological stream (e.g. expired logs that keep
+		// returning fresh tokens with no events) can't spin forever.
+		for i := 0; i < 100; i++ {
+			out, err := client.GetLogEvents(context.Background(), &logs.GetLogEventsInput{
+				LogGroupName:  awssdk.String(group),
+				LogStreamName: awssdk.String(stream),
+				Limit:         awssdk.Int32(int32(streamEventsWant)),
+				StartFromHead: awssdk.Bool(false),
+				NextToken:     token,
 			})
+			if err != nil {
+				return errMsg{err: err}
+			}
+			for _, e := range out.Events {
+				ts := time.Time{}
+				if e.Timestamp != nil {
+					ts = time.UnixMilli(*e.Timestamp).Local()
+				}
+				events = append(events, LogEvent{
+					Time:    ts,
+					Stream:  stream,
+					Message: awssdk.ToString(e.Message),
+				})
+			}
+			if len(events) >= streamEventsWant {
+				break
+			}
+			next := out.NextBackwardToken
+			// A token equal to the one we sent (or a nil token) means there
+			// are no older events to fetch - we've reached the start.
+			if next == nil || (token != nil && awssdk.ToString(next) == awssdk.ToString(token)) {
+				break
+			}
+			token = next
 		}
 		sort.Slice(events, func(i, j int) bool { return events[i].Time.Before(events[j].Time) })
 		return streamEventsLoadedMsg{stream: stream, events: events}
