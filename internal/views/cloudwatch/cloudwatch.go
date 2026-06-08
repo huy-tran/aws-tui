@@ -669,6 +669,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-wrap any displayed log content to the new width.
 		switch m.mode {
 		case modeStreamEvents:
+			m.viewport.Height = m.streamEventsViewportHeight()
 			if len(m.streamEvents) > 0 {
 				if m.findQuery != "" {
 					m.applyStreamFind()
@@ -710,6 +711,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamEventsLoadedMsg:
 		m.streamEventsLoading = false
 		m.streamEvents = msg.events
+		m.viewport.Height = m.streamEventsViewportHeight()
 		m.viewport.SetContent(renderEvents(m.streamEvents, m.viewport.Width, true, m.jsonPretty))
 		m.viewport.GotoBottom()
 		return m, nil
@@ -756,6 +758,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case searchDoneMsg:
 		m.searchLoading = false
 		m.results = msg.events
+		// Results use the generic viewport height; reset it in case we are
+		// arriving from the taller stream-events layout.
+		if h := m.height - 6; h >= 3 {
+			m.viewport.Height = h
+		}
 		m.viewport.SetContent(renderEvents(m.results, m.viewport.Width, true, m.jsonPretty))
 		m.viewport.GotoTop()
 		more := ""
@@ -1201,6 +1208,48 @@ func (m Model) selectedStream() *LogStream {
 	return &m.streams[idx]
 }
 
+// streamHeaderTable renders the stream-events header as a two-column
+// Field/Value table, matching the table-based detail panels used elsewhere.
+// It is a fixed three-row table so the layout height is constant; the JSON
+// and find indicators live on a separate meta line (see streamMetaLine).
+func (m Model) streamHeaderTable() string {
+	return datatable.RenderKeyValue("Field", "Value", []datatable.KV{
+		{Key: "Group", Value: m.target.Name},
+		{Key: "Stream", Value: m.streamTarget},
+		{Key: "Events", Value: fmt.Sprintf("%d", len(m.streamEvents))},
+	}, m.width)
+}
+
+// streamMetaLine renders the (always one-line) JSON / find status row shown
+// directly under the header table. Returns an empty line when neither is
+// active so the layout height stays constant.
+func (m Model) streamMetaLine() string {
+	var bits []string
+	if m.jsonPretty {
+		bits = append(bits, "json pretty-print")
+	}
+	if m.findQuery != "" {
+		if len(m.findMatches) > 0 {
+			bits = append(bits, fmt.Sprintf("match %d/%d for %q", m.findCursor+1, len(m.findMatches), m.findQuery))
+		} else {
+			bits = append(bits, fmt.Sprintf("no match for %q", m.findQuery))
+		}
+	}
+	return mutedStyle.Render(strings.Join(bits, " · "))
+}
+
+// streamEventsViewportHeight sizes the events viewport to fit beneath the
+// fixed-height key/value header table. That table is ~8 rows taller than the
+// single-line title it replaced, so we reserve 8 extra rows on top of the
+// generic height budget (height-6) used by the other views.
+func (m Model) streamEventsViewportHeight() int {
+	h := m.height - 14
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
+
 func (m Model) View() string {
 	if m.err != nil {
 		hint := "Press r to retry."
@@ -1223,20 +1272,9 @@ func (m Model) View() string {
 			title := headerStyle.Render(m.target.Name + " / " + m.streamTarget)
 			return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("loading events..."))
 		}
-		titleText := fmt.Sprintf("%s / %s · %d events", m.target.Name, m.streamTarget, len(m.streamEvents))
-		if m.jsonPretty {
-			titleText += " · json"
-		}
-		if m.findQuery != "" {
-			if len(m.findMatches) > 0 {
-				titleText += fmt.Sprintf(" · match %d/%d for %q", m.findCursor+1, len(m.findMatches), m.findQuery)
-			} else {
-				titleText += fmt.Sprintf(" · no match for %q", m.findQuery)
-			}
-		}
-		title := headerStyle.Render(titleText)
+		header := m.streamHeaderTable()
 		help := mutedStyle.Render("/: find · n/N: next/prev · J: json · ↑/↓ scroll · y: yank · r: reload · esc: back")
-		parts := []string{title, ""}
+		parts := []string{header, m.streamMetaLine()}
 		if m.findMode {
 			parts = append(parts, m.findInput.View())
 		}
