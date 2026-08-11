@@ -15,7 +15,7 @@ The tabbed container shown after profile + region are selected. Each tab is a se
 │                                                              │
 │                                                              │
 ├──────────────────────────────────────────────────────────────┤
-│ ↑/↓ nav · enter open · r refresh · ctrl+p profile · ? help   │  ← footer
+│ ↑/↓ nav · enter · ctrl+r refresh · ctrl+p profile · ? help   │  ← footer
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -183,7 +183,7 @@ func (m Model) renderTabs() string {
 }
 
 func (m Model) renderFooter() string {
-	help := "↑/↓ nav · enter open · r refresh · ctrl+p profile · ctrl+r region · ? help · ctrl+c quit"
+	help := "↑/↓ nav · enter open · ctrl+r refresh · ctrl+p profile · ctrl+g region · ? help · ctrl+c quit"
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Padding(0, 1).
@@ -219,7 +219,7 @@ func profileColour(profile string) lipgloss.Style {
 
 ## Refresh key
 
-`r` is reserved as the global "refresh active tab" key. Each tab implements it by re-issuing its load command and invalidating its cache entry (see `12-state-and-caching.md`).
+`ctrl+r` is reserved as the global "refresh active tab" key. Each tab implements it by re-issuing its load command and invalidating its cache entry (see `12-state-and-caching.md`).
 
 ## Acceptance criteria
 

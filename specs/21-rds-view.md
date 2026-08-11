@@ -119,6 +119,6 @@ Beanstalk · EC2 · RDS · Logs · CloudFront · S3 · Parameter Store · Securi
 - `enter` opens details with full metadata.
 - `f` opens port-forward modal; `ctrl+s` yanks the built command without running.
 - `y` opens yank menu: `h` endpoint host, `p` port, `u` master user.
-- `r` refreshes (invalidates cache).
+- `ctrl+r` refreshes (invalidates cache).
 - View implements CapturingInput / InSubnav / HelpItems / StatusFooter just like every other tab.
 EOF

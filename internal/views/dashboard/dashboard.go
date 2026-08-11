@@ -309,7 +309,7 @@ func (m Model) renderTabs() string {
 }
 
 func (m Model) renderFooter() string {
-	help := "↑/↓ nav · ←/→ or tab tabs · enter open · r refresh · ctrl+p profile · ctrl+r region · ? help · ctrl+c quit"
+	help := "↑/↓ nav · ←/→ or tab tabs · enter open · ctrl+r refresh · ctrl+p profile · ctrl+g region · ? help · ctrl+c quit"
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Padding(0, 1).

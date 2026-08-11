@@ -152,7 +152,8 @@ These work from any screen:
 |----------|---------------------------------|
 | `ctrl+c` | Quit                            |
 | `ctrl+p` | Jump to profile picker          |
-| `ctrl+r` | Jump to region picker (if context exists) |
+| `ctrl+g` | Jump to region picker (if context exists) |
+| `ctrl+r` | Refresh the active view (view-local, never swallowed here) |
 | `esc`    | Pop current view (back)         |
 | `?`      | Toggle help overlay             |
 

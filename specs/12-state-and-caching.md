@@ -231,14 +231,14 @@ The region is implicit when using the context's region (since the context is pro
 
 ## Refresh key
 
-`r` in any view should:
+`ctrl+r` in any view should:
 
 1. Invalidate the relevant cache entry.
 2. Re-issue the load command.
 3. Show the spinner.
 
 ```go
-case "r":
+case "ctrl+r":
 	m.ctx.Cache.Invalidate("ec2:instances:" + m.ctx.Region)
 	m.loading = true
 	return m, m.loadCmd()
@@ -252,7 +252,7 @@ case "r":
 
 ## Profile/region switch invalidates
 
-When the user switches profile or region via `ctrl+p` / `ctrl+r`:
+When the user switches profile or region via `ctrl+p` / `ctrl+g`:
 
 - The old `aws.Context` is discarded (or its cache invalidated).
 - A new context is constructed with a fresh cache.
@@ -266,5 +266,5 @@ Don't try to share cache across contexts. The complexity isn't worth it for the 
 - Last profile and per-profile last region survive restarts.
 - Bucket regions are cached and avoid `GetBucketLocation` calls on subsequent launches.
 - Cache TTLs match the table above.
-- `r` invalidates and reloads in every list view.
+- `ctrl+r` invalidates and reloads in every list view.
 - Corrupt state file falls back to defaults rather than crashing.

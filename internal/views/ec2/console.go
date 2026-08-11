@@ -126,7 +126,7 @@ func (m consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc", "q":
 			return m, nav.PopView()
-		case "r":
+		case "ctrl+r":
 			m.loading = true
 			m.err = nil
 			m.output = ""
@@ -157,12 +157,12 @@ func (m consoleModel) View() string {
 		title += "  (" + m.inst.Name + ")"
 	}
 	if m.err != nil {
-		return errorStyle.Render(fmt.Sprintf("Error: %v\n\nPress r to retry, esc to back.", m.err))
+		return errorStyle.Render(fmt.Sprintf("Error: %v\n\nPress ctrl+r to retry, esc to back.", m.err))
 	}
 	if m.loading {
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("fetching console output..."))
 	}
-	help := mutedStyle.Render("↑/↓ scroll · r: refresh (latest) · y: yank · esc: back")
+	help := mutedStyle.Render("↑/↓ scroll · ctrl+r: refresh (latest) · y: yank · esc: back")
 	parts := []string{title, "", m.vp.View(), "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))

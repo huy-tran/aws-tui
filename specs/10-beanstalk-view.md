@@ -12,7 +12,7 @@ List environments with health colour coding, view recent events, see deployed ve
 │   app-staging / app-staging-web  ● Yellow    Updating     v1.43.0 │
 │   client-x / client-x-prod       ● Red       Ready        v2.1.4  │
 │                                                                   │
-│ enter: details · e: events · d: deploy · r: refresh               │
+│ enter: details · e: events · d: deploy · ctrl+r: refresh          │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,7 +57,7 @@ Health dot colours: Green / Yellow / Red / Grey (Unknown) / Grey (NoData) mapped
 │                    Severe. ELB health: 50% of requests failing.   │
 │ 09:44:01  INFO     Successfully launched environment.             │
 │                                                                    │
-│ ↑/↓ scroll · r: refresh · esc: back                               │
+│ ↑/↓ scroll · ctrl+r: refresh · esc: back                          │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -156,4 +156,4 @@ Versions: 5 minute cache.
 - Events view shows colour-coded severity, scrollable, with timestamps in local time.
 - Deploy modal lists application versions with descriptions.
 - Prod environment deploys require typing the environment name to confirm.
-- `r` refreshes the current view.
+- `ctrl+r` refreshes the current view.

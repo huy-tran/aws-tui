@@ -260,7 +260,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "r":
+	case "ctrl+r":
 		m.ctx.Cache.Invalidate("s3:buckets")
 		m.loading = true
 		m.err = nil
@@ -343,7 +343,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "enter", Desc: "open bucket browser"},
 			{Keys: "y", Desc: "yank menu: b=name, u=s3:// URI, h=https URL"},
 			{Keys: "/", Desc: "filter"},
-			{Keys: "r", Desc: "refresh"},
+			{Keys: "ctrl+r", Desc: "refresh"},
 			{Keys: "↑/↓ j/k", Desc: "move cursor"},
 		},
 	}}
@@ -362,7 +362,7 @@ func (m Model) selected() *Bucket {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry."
+		hint := "Press ctrl+r to retry."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` then press r."
 		}
@@ -386,7 +386,7 @@ func (m Model) View() string {
 		body = mutedStyle.Render("No buckets match filter.")
 	}
 
-	help := mutedStyle.Render("enter: open · y u/h/b: yank · /: filter · r: refresh")
+	help := mutedStyle.Render("enter: open · y u/h/b: yank · /: filter · ctrl+r: refresh")
 	parts := []string{header, filterLine, "", body, "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))

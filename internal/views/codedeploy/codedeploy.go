@@ -484,7 +484,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.ascend()
 			case "enter":
 				return m.descend()
-			case "r":
+			case "ctrl+r":
 				return m.refresh()
 			}
 		}
@@ -759,7 +759,7 @@ func (m Model) HelpItems() []help.Section {
 				{Keys: "enter", Desc: "open deployment groups"},
 				{Keys: "/", Desc: "filter"},
 				{Keys: "s", Desc: "sort by column (pick name / platform / created)"},
-				{Keys: "r", Desc: "refresh (invalidates cache)"},
+				{Keys: "ctrl+r", Desc: "refresh (invalidates cache)"},
 				{Keys: "↑/↓ j/k", Desc: "move cursor"},
 			},
 		}}
@@ -771,7 +771,7 @@ func (m Model) HelpItems() []help.Section {
 				{Keys: "esc", Desc: "back to applications"},
 				{Keys: "/", Desc: "filter"},
 				{Keys: "s", Desc: "sort by column (incl. last deployment time)"},
-				{Keys: "r", Desc: "refresh"},
+				{Keys: "ctrl+r", Desc: "refresh"},
 			},
 		}}
 	case levelDeployments:
@@ -782,7 +782,7 @@ func (m Model) HelpItems() []help.Section {
 				{Keys: "esc", Desc: "back to groups"},
 				{Keys: "/", Desc: "filter"},
 				{Keys: "s", Desc: "sort by column, e.g. created / completed (toggle asc/desc)"},
-				{Keys: "r", Desc: "refresh"},
+				{Keys: "ctrl+r", Desc: "refresh"},
 			},
 		}}
 	default:
@@ -799,7 +799,7 @@ func (m Model) HelpItems() []help.Section {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry."
+		hint := "Press ctrl+r to retry."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` in another shell, then press r."
 		}
@@ -827,19 +827,19 @@ func (m Model) View() string {
 		if len(m.appsF) == 0 {
 			body = m.emptyBody("applications")
 		}
-		helpLine = mutedStyle.Render("enter: groups · /: filter · s: sort · r: refresh")
+		helpLine = mutedStyle.Render("enter: groups · /: filter · s: sort · ctrl+r: refresh")
 	case levelGroups:
 		body = m.groupTable.View()
 		if len(m.groupsF) == 0 {
 			body = m.emptyBody("deployment groups")
 		}
-		helpLine = mutedStyle.Render("enter: deployments · esc: back · /: filter · s: sort · r: refresh")
+		helpLine = mutedStyle.Render("enter: deployments · esc: back · /: filter · s: sort · ctrl+r: refresh")
 	case levelDeployments:
 		body = m.deployTable.View()
 		if len(m.depsF) == 0 {
 			body = m.emptyBody("deployments")
 		}
-		helpLine = mutedStyle.Render("enter: detail · esc: back · /: filter · s: sort (created/completed) · r: refresh")
+		helpLine = mutedStyle.Render("enter: detail · esc: back · /: filter · s: sort (created/completed) · ctrl+r: refresh")
 	}
 
 	parts := []string{header, filterLine, "", body, "", helpLine}

@@ -14,7 +14,7 @@ Browse buckets and their contents tree-style. Optimised for finding objects and 
 │   app-prod-backups                ap-southeast-2  2023-05-01       │
 │   client-website-assets           us-east-1       2024-02-19       │
 │                                                                    │
-│ enter: open · y u: yank s3:// URI · y h: yank https URL · r refresh│
+│ enter: open · y u: yank s3:// URI · y h: https URL · ctrl+r refresh│
 └────────────────────────────────────────────────────────────────────┘
 ```
 

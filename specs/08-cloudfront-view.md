@@ -11,7 +11,7 @@ List distributions, create invalidations, monitor invalidation status. CloudFron
 │   E2XYZ45ABC6DEF  d456xyz.cloudfront.net      api-prod-elb      Deployed │
 │   E3MMM77NNN8OOO  d789mmm.cloudfront.net      static-assets     Deployed │
 │                                                                          │
-│ enter: open · i: invalidate · v: view invalidations · r: refresh         │
+│ enter: open · i: invalidate · v: view invalidations · ctrl+r: refresh    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -43,7 +43,7 @@ List distributions, create invalidations, monitor invalidation status. CloudFron
 │   I2XYZ45GHI        Completed   2026-05-22 09:02:11  /css/* /js/* │
 │   I3MMM77NNN        Completed   2026-05-21 16:45:00  /index.html  │
 │                                                                   │
-│ r: refresh (polls every 5s while InProgress) · esc: back          │
+│ ctrl+r: refresh (polls every 5s while InProgress) · esc: back     │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -235,4 +235,4 @@ On tick, re-issue `ListInvalidations` and refresh. Stop ticking when no InProgre
 - After submission, show toast/status with the invalidation ID, switch to invalidations view.
 - `v` from distribution list shows invalidation history for that distribution.
 - Auto-poll every 5s while any invalidation is InProgress.
-- `r` refreshes the list.
+- `ctrl+r` refreshes the list.

@@ -15,7 +15,7 @@ The most important view. Lists EC2 instances and lets the user open an SSM sessi
 │   bastion               i-0xyz999aaa111bbb  running  t3.mic 10.0.. │
 │   db-replica-old        i-0fff222eee333ddd  stopped  m5.lar -      │
 │                                                                   │
-│ enter: SSM session · p: port forward · i: details · r: refresh   │
+│ enter: SSM session · p: port fwd · i: details · ctrl+r: refresh  │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -155,7 +155,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "r":
+		case "ctrl+r":
 			m.loading = true
 			m.err = nil
 			return m, tea.Batch(m.spinner.Tick, m.loadCmd())
@@ -196,7 +196,7 @@ func (m Model) selected() *Instance {
 
 func (m Model) View() string {
 	if m.err != nil {
-		return errorStyle.Render(fmt.Sprintf("Error: %v\n\nPress r to retry.", m.err))
+		return errorStyle.Render(fmt.Sprintf("Error: %v\n\nPress ctrl+r to retry.", m.err))
 	}
 	if m.loading {
 		return fmt.Sprintf("%s loading instances...", m.spinner.View())
@@ -322,4 +322,4 @@ Copy-to-clipboard hotkeys: `y i` (yank instance ID), `y p` (yank private IP), `y
 - `enter` on a running instance opens an SSM session via `aws ssm start-session`, suspending the TUI.
 - `p` on a running instance opens a port forward prompt then starts the session.
 - `i` shows details panel with yank hotkeys.
-- `r` refreshes the list.
+- `ctrl+r` refreshes the list.

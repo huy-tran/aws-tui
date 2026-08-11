@@ -412,7 +412,7 @@ func (m Model) updateInsightKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filter.Focus()
 		m.status = ""
 		return m, textinput.Blink
-	case "r":
+	case "ctrl+r":
 		m.ctx.Cache.Invalidate("sh:insights:" + m.ctx.Region)
 		m.loading = true
 		m.err = nil
@@ -499,7 +499,7 @@ func (m Model) updateFindingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.findingsFilt = nil
 		m.findingsScope = ""
 		return m, nil
-	case "r":
+	case "ctrl+r":
 		// Re-issue the same filters as the current scope.
 		m.loading = true
 		filters := m.lastFilters()
@@ -546,7 +546,7 @@ func (m Model) updateFindingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // lastFilters rebuilds the filter set that produced the current findings
-// list (so r can refresh). When we drilled from an insight result, recover
+// list (so ctrl+r can refresh). When we drilled from an insight result, recover
 // the filters from the targetInsight + selected result. Otherwise it was an
 // "all active findings" view.
 func (m Model) lastFilters() shtypes.AwsSecurityFindingFilters {
@@ -653,7 +653,7 @@ func (m Model) HelpItems() []help.Section {
 				{Keys: "y", Desc: "yank menu: a=arn, t=title, l=remediation URL"},
 				{Keys: "1/2/3/4/5", Desc: "toggle severity (CRIT/HIGH/MED/LOW/INFO)"},
 				{Keys: "s", Desc: "toggle suppressed visibility"},
-				{Keys: "r", Desc: "refresh"},
+				{Keys: "ctrl+r", Desc: "refresh"},
 				{Keys: "esc", Desc: "back"},
 			},
 		}}
@@ -682,7 +682,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "enter", Desc: "open insight (aggregations)"},
 			{Keys: "a", Desc: "skip insights, list all active findings"},
 			{Keys: "/", Desc: "filter"},
-			{Keys: "r", Desc: "refresh"},
+			{Keys: "ctrl+r", Desc: "refresh"},
 		},
 	}}
 }
@@ -966,7 +966,7 @@ func ageLabel(t time.Time) string {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry · esc to back."
+		hint := "Press ctrl+r to retry · esc to back."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` then press r."
 		}
@@ -1016,7 +1016,7 @@ func (m Model) viewInsights() string {
 	if len(m.insightsFilt) == 0 && m.filter.Value() != "" {
 		body = mutedStyle.Render("No insights match filter.")
 	}
-	help := mutedStyle.Render("enter: open · a: all findings · /: filter · r: refresh")
+	help := mutedStyle.Render("enter: open · a: all findings · /: filter · ctrl+r: refresh")
 	parts := []string{header, filterLine, "", body, "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))

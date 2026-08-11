@@ -27,7 +27,7 @@ You can also `a` from the Insights list to skip straight to **all** findings in 
 │   prod-only criticals (custom)                      Severity   You  │
 │   ...                                                              │
 │                                                                     │
-│ enter: open · a: all findings · /: filter · r: refresh             │
+│ enter: open · a: all findings · /: filter · ctrl+r: refresh        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -540,6 +540,6 @@ Render that with the existing `errorStyle` so the user knows what to do rather t
 - Severity prefix is colour-coded; `1`/`2`/`3`/`4`/`5` toggle severity rows; `s` toggles suppressed visibility.
 - `enter` on a finding shows the detail view.
 - `y a` yanks finding ARN; `y t` yanks title; `y l` yanks remediation URL (or empty status if missing).
-- 10m cache on insights, 60s cache on findings; `r` invalidates and reloads.
+- 10m cache on insights, 60s cache on findings; `ctrl+r` invalidates and reloads.
 - Region without SecurityHub enabled shows a clear "enable it" error instead of an opaque API failure.
 - SSO expiry uses the existing inline-retry pattern from `03-aws-client.md`.

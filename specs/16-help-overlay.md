@@ -10,7 +10,8 @@
 │ Global                                                          │
 │   ctrl+c       quit                                             │
 │   ctrl+p       switch profile                                   │
-│   ctrl+r       switch region                                    │
+│   ctrl+g       switch region                                    │
+│   ctrl+r       refresh current view                             │
 │   tab / S-tab  next / previous tab                              │
 │   ←/→          next / previous tab (root list, no input)        │
 │   ?            toggle this help                                 │

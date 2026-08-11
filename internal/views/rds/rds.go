@@ -289,7 +289,7 @@ func (m Model) updateListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filter.Focus()
 		m.status = ""
 		return m, textinput.Blink
-	case "r":
+	case "ctrl+r":
 		m.ctx.Cache.Invalidate("rds:instances:" + m.ctx.Region)
 		m.loading = true
 		m.err = nil
@@ -509,7 +509,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "f", Desc: "build port-forward command"},
 			{Keys: "y", Desc: "yank menu: h=endpoint, p=port, u=master user"},
 			{Keys: "/", Desc: "filter"},
-			{Keys: "r", Desc: "refresh"},
+			{Keys: "ctrl+r", Desc: "refresh"},
 		},
 	}}
 }
@@ -600,7 +600,7 @@ func doYank(value, label string) string {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry."
+		hint := "Press ctrl+r to retry."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` then press r."
 		}
@@ -631,7 +631,7 @@ func (m Model) viewList() string {
 	if len(m.displayed) == 0 && m.filter.Value() != "" {
 		body = mutedStyle.Render("No instances match filter.")
 	}
-	help := mutedStyle.Render("enter: details · f: port-forward · y: yank · /: filter · r: refresh")
+	help := mutedStyle.Render("enter: details · f: port-forward · y: yank · /: filter · ctrl+r: refresh")
 	parts := []string{header, filterLine, "", body, "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))

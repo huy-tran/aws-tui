@@ -15,7 +15,7 @@ List log groups, drill into log streams, tail logs. For real-time tail we shell 
 │   /aws/rds/instance/app-prod-db/error             7 days     8.4 G │
 │   /aws/cloudtrail/management                      Never      —     │
 │                                                                    │
-│ enter: streams · t: tail · s: search · r: refresh                  │
+│ enter: streams · t: tail · s: search · ctrl+r: refresh             │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -148,4 +148,4 @@ func retentionLabel(days *int32) string {
 - `s` opens search modal with pattern + time range.
 - Search results are scrollable with line-yank support.
 - `enter` on a group shows its streams sorted by most recent event.
-- `r` refreshes the log groups list (invalidates cache).
+- `ctrl+r` refreshes the log groups list (invalidates cache).

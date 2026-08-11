@@ -170,7 +170,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 // loadCmd returns the load command. When force is true, the cache is bypassed
-// and a refresh is forced (used by the 'r' key).
+// and a refresh is forced (used by the ctrl+r key).
 func (m Model) loadCmd(force bool) tea.Cmd {
 	cacheKey := "ec2:instances:" + m.ctx.Region
 	ctx := m.ctx
@@ -365,7 +365,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "r":
+		case "ctrl+r":
 			m.ctx.Cache.Invalidate("ec2:instances:" + m.ctx.Region)
 			m.loading = true
 			m.err = nil
@@ -603,7 +603,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "S / U / R", Desc: "stop / start (up) / reboot (confirm required)"},
 			{Keys: "f", Desc: "pick state filter (ribbon: 1-7 or first letter)"},
 			{Keys: "/", Desc: "filter"},
-			{Keys: "r", Desc: "refresh (invalidates cache)"},
+			{Keys: "ctrl+r", Desc: "refresh (invalidates cache)"},
 			{Keys: "↑/↓ j/k", Desc: "move cursor"},
 			{Keys: "pgup/pgdn", Desc: "page"},
 		},
@@ -684,7 +684,7 @@ func (m Model) startSSMSession(inst Instance) tea.Cmd {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry."
+		hint := "Press ctrl+r to retry."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` in another shell, then press r."
 		}
@@ -703,7 +703,7 @@ func (m Model) View() string {
 		filterLine = m.renderStateRibbon()
 	}
 
-	help := mutedStyle.Render("enter: SSM · p: port forward · i: details · c: console · S/U/R: stop/start/reboot · f: state · r: refresh · /: filter")
+	help := mutedStyle.Render("enter: SSM · p: port forward · i: details · c: console · S/U/R: stop/start/reboot · f: state · ctrl+r: refresh · /: filter")
 
 	body := m.table.View()
 	if len(m.displayed) == 0 {

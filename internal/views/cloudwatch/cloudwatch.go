@@ -509,7 +509,7 @@ func (m *Model) startTailCmd(arn, name string) tea.Cmd {
 		// constructing it from the name + region + account context.
 		// Without the account id we can't, so just bail to a useful
 		// reason and keep the view alive.
-		m.tailReason = "tail unavailable: log group ARN missing (refresh the groups list with 'r')"
+		m.tailReason = "tail unavailable: log group ARN missing (refresh the groups list with ctrl+r)"
 		return nil
 	}
 	if m.tailCancel != nil {
@@ -821,7 +821,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.mode = modeGroups
 			return m, nil
-		case "r":
+		case "ctrl+r":
 			m.ctx.Cache.Invalidate("logs:streams:" + m.target.Name)
 			return m, m.loadStreamsCmd(m.target.Name)
 		case "enter":
@@ -886,7 +886,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.viewport.SetYOffset(m.findMatches[m.findCursor])
 			}
 			return m, nil
-		case "r":
+		case "ctrl+r":
 			m.resetFind()
 			m.streamEventsLoading = true
 			m.viewport.SetContent("")
@@ -960,7 +960,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filterMode = true
 			m.filter.Focus()
 			return m, textinput.Blink
-		case "r":
+		case "ctrl+r":
 			m.ctx.Cache.Invalidate("logs:groups:" + m.ctx.Region)
 			m.groupsLoading = true
 			return m, tea.Batch(m.loader.Tick(), m.loadGroupsCmd("", true))
@@ -1063,7 +1063,7 @@ func (m Model) HelpItems() []help.Section {
 			Title: "CloudWatch · streams",
 			Items: []help.Item{
 				{Keys: "enter", Desc: "view stream events"},
-				{Keys: "r", Desc: "refresh"},
+				{Keys: "ctrl+r", Desc: "refresh"},
 				{Keys: "esc", Desc: "back to log groups"},
 			},
 		}}
@@ -1086,7 +1086,7 @@ func (m Model) HelpItems() []help.Section {
 				{Keys: "J", Desc: "toggle JSON pretty-print"},
 				{Keys: "↑/↓", Desc: "scroll"},
 				{Keys: "y", Desc: "yank all events"},
-				{Keys: "r", Desc: "reload"},
+				{Keys: "ctrl+r", Desc: "reload"},
 				{Keys: "esc", Desc: "back to streams"},
 			},
 		}}
@@ -1140,7 +1140,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "t", Desc: "tail (shells out to aws logs tail)"},
 			{Keys: "s", Desc: "search via FilterLogEvents"},
 			{Keys: "/", Desc: "filter"},
-			{Keys: "r", Desc: "refresh"},
+			{Keys: "ctrl+r", Desc: "refresh"},
 		},
 	}}
 }
@@ -1254,7 +1254,7 @@ func (m Model) streamEventsViewportHeight() int {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry."
+		hint := "Press ctrl+r to retry."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` then press r."
 		}
@@ -1263,7 +1263,7 @@ func (m Model) View() string {
 	switch m.mode {
 	case modeStreams:
 		title := headerStyle.Render("Streams: " + m.target.Name)
-		help := mutedStyle.Render("enter: view events · r: refresh · esc: back")
+		help := mutedStyle.Render("enter: view events · ctrl+r: refresh · esc: back")
 		body := m.stTable.View()
 		if len(m.streams) == 0 {
 			body = mutedStyle.Render("(no streams)")
@@ -1275,7 +1275,7 @@ func (m Model) View() string {
 			return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("loading events..."))
 		}
 		header := m.streamHeaderTable()
-		help := mutedStyle.Render("/: find · n/N: next/prev · J: json · ↑/↓ scroll · y: yank · r: reload · esc: back")
+		help := mutedStyle.Render("/: find · n/N: next/prev · J: json · ↑/↓ scroll · y: yank · ctrl+r: reload · esc: back")
 		parts := []string{header, m.streamMetaLine()}
 		if m.findMode {
 			parts = append(parts, m.findInput.View())
@@ -1373,7 +1373,7 @@ func (m Model) View() string {
 	if len(m.groupsFilt) == 0 {
 		body = mutedStyle.Render("No groups match filter.")
 	}
-	help := mutedStyle.Render("enter: streams · t: tail (shells out) · s: search · /: filter · r: refresh")
+	help := mutedStyle.Render("enter: streams · t: tail (shells out) · s: search · /: filter · ctrl+r: refresh")
 	return lipgloss.JoinVertical(lipgloss.Left, header, filterLine, "", body, "", help)
 }
 

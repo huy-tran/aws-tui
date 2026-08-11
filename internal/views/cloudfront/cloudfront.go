@@ -404,7 +404,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mode = modeList
 			m.histPolling = false
 			return m, nil
-		case "r":
+		case "ctrl+r":
 			m.ctx.Cache.Invalidate("cloudfront:invalidations:" + m.target.ID)
 			m.histLoading = true
 			return m, tea.Batch(m.loader.Tick(), m.loadInvalidationsCmd(m.target.ID, true))
@@ -437,7 +437,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filterMode = true
 			m.filter.Focus()
 			return m, textinput.Blink
-		case "r":
+		case "ctrl+r":
 			m.ctx.Cache.Invalidate("cloudfront:distributions")
 			m.loading = true
 			m.err = nil
@@ -549,7 +549,7 @@ func (m Model) HelpItems() []help.Section {
 		return []help.Section{{
 			Title: "CloudFront · invalidations history",
 			Items: []help.Item{
-				{Keys: "r", Desc: "refresh"},
+				{Keys: "ctrl+r", Desc: "refresh"},
 				{Keys: "esc", Desc: "back to distributions"},
 			},
 		}}
@@ -570,7 +570,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "i", Desc: "create invalidation"},
 			{Keys: "v", Desc: "view invalidations history"},
 			{Keys: "/", Desc: "filter"},
-			{Keys: "r", Desc: "refresh"},
+			{Keys: "ctrl+r", Desc: "refresh"},
 			{Keys: "↑/↓ j/k", Desc: "move cursor"},
 		},
 	}}
@@ -628,7 +628,7 @@ func hasInProgress(items []Invalidation) bool {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry."
+		hint := "Press ctrl+r to retry."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` then press r."
 		}
@@ -661,7 +661,7 @@ func (m Model) View() string {
 	if len(m.distrosFilt) == 0 && m.filter.Value() != "" {
 		body = mutedStyle.Render("No distributions match filter.")
 	}
-	help := mutedStyle.Render("enter: open · i: invalidate · v: invalidations · /: filter · r: refresh")
+	help := mutedStyle.Render("enter: open · i: invalidate · v: invalidations · /: filter · ctrl+r: refresh")
 	parts := []string{header, filterLine, "", body, "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))
@@ -706,7 +706,7 @@ func (m Model) viewInvalidations() string {
 	if m.histLoading {
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", m.loader.Render("loading invalidations..."))
 	}
-	help := mutedStyle.Render("r: refresh · esc: back")
+	help := mutedStyle.Render("ctrl+r: refresh · esc: back")
 	return lipgloss.JoinVertical(lipgloss.Left, title, pollNote, "", m.histTable.View(), "", help)
 }
 

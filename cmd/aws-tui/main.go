@@ -132,7 +132,8 @@ func printHelp() {
 	fmt.Println("Global keys (inside the TUI):")
 	fmt.Println("  ctrl+c   quit")
 	fmt.Println("  ctrl+p   jump to profile picker")
-	fmt.Println("  ctrl+r   jump to region picker")
+	fmt.Println("  ctrl+g   jump to region picker")
+	fmt.Println("  ctrl+r   refresh the current view")
 	fmt.Println("  esc      go back")
 }
 

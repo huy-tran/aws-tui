@@ -292,7 +292,7 @@ func (m browserModel) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(m.loader.Tick(), m.listPrefix(parent, false))
 		}
 		return m, nav.PopView()
-	case "r":
+	case "ctrl+r":
 		m.ctx.Cache.Invalidate("s3:objects:" + m.bucket.Name + ":" + m.prefix)
 		m.loading = true
 		return m, tea.Batch(m.loader.Tick(), m.listPrefix(m.prefix, true))
@@ -419,7 +419,7 @@ func (m browserModel) HelpItems() []help.Section {
 			{Keys: "ctrl+d", Desc: "delete selected (or cursor file) with y/n confirm"},
 			{Keys: "ctrl+u", Desc: "upload files into current prefix"},
 			{Keys: "y", Desc: "yank menu: u=s3://, h=https, k=key, b=bucket"},
-			{Keys: "r", Desc: "refresh prefix"},
+			{Keys: "ctrl+r", Desc: "refresh prefix"},
 			{Keys: "↑/↓ j/k", Desc: "move cursor"},
 		},
 	}}
@@ -461,7 +461,7 @@ func (m browserModel) View() string {
 	if m.status != "" {
 		notes = append(notes, mutedStyle.Render(m.status))
 	}
-	help := mutedStyle.Render("enter: open/download · space: select · ctrl+d: delete · ctrl+u: upload · y u/h/k/b: yank · r: refresh · esc: up/back")
+	help := mutedStyle.Render("enter: open/download · space: select · ctrl+d: delete · ctrl+u: upload · y u/h/k/b: yank · ctrl+r: refresh · esc: up/back")
 
 	parts := []string{title, ""}
 	if len(m.prefixHist) > 0 || m.prefix != "" {

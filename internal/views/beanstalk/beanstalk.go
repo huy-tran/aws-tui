@@ -395,7 +395,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.mode = modeDetails
 			return m, nil
-		case "r":
+		case "ctrl+r":
 			return m, m.loadEventsCmd(m.target.EnvName)
 		}
 		var cmd tea.Cmd
@@ -407,7 +407,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.mode = modeDetails
 			return m, nil
-		case "r":
+		case "ctrl+r":
 			m.ctx.Cache.Invalidate("eb:versions:" + m.target.AppName)
 			return m, m.loadVersionsCmd(m.target.AppName)
 		case "enter":
@@ -472,7 +472,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filterMode = true
 			m.filter.Focus()
 			return m, textinput.Blink
-		case "r":
+		case "ctrl+r":
 			m.ctx.Cache.Invalidate("eb:environments")
 			m.loading = true
 			return m, tea.Batch(m.loader.Tick(), m.loadEnvsCmd(true))
@@ -568,7 +568,7 @@ func (m Model) HelpItems() []help.Section {
 		return []help.Section{{
 			Title: "Beanstalk · events",
 			Items: []help.Item{
-				{Keys: "r", Desc: "refresh"},
+				{Keys: "ctrl+r", Desc: "refresh"},
 				{Keys: "esc", Desc: "back to details"},
 			},
 		}}
@@ -577,7 +577,7 @@ func (m Model) HelpItems() []help.Section {
 			Title: "Beanstalk · deploy",
 			Items: []help.Item{
 				{Keys: "enter", Desc: "deploy selected version (prod needs name-typed confirm)"},
-				{Keys: "r", Desc: "refresh versions"},
+				{Keys: "ctrl+r", Desc: "refresh versions"},
 				{Keys: "esc", Desc: "back to details"},
 			},
 		}}
@@ -608,7 +608,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "e", Desc: "events for env"},
 			{Keys: "d", Desc: "deploy a version"},
 			{Keys: "/", Desc: "filter"},
-			{Keys: "r", Desc: "refresh"},
+			{Keys: "ctrl+r", Desc: "refresh"},
 		},
 	}}
 }
@@ -637,7 +637,7 @@ func (m Model) selectedVersion() *Version {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry · esc to back."
+		hint := "Press ctrl+r to retry · esc to back."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` then press r."
 		}
@@ -668,7 +668,7 @@ func (m Model) View() string {
 	if len(m.envsFilt) == 0 && m.filter.Value() != "" {
 		body = mutedStyle.Render("No environments match filter.")
 	}
-	help := mutedStyle.Render("enter: details · e: events · d: deploy · /: filter · r: refresh")
+	help := mutedStyle.Render("enter: details · e: events · d: deploy · /: filter · ctrl+r: refresh")
 	parts := []string{header}
 	if m.polling {
 		parts = append(parts, mutedStyle.Render("auto-refresh every 10s while any env is in transition"))
@@ -716,7 +716,7 @@ func (m Model) viewEvents() string {
 	if len(m.events) == 0 {
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", mutedStyle.Render("loading events..."))
 	}
-	help := mutedStyle.Render("↑/↓ pgup/pgdn: scroll · r: refresh · esc: back")
+	help := mutedStyle.Render("↑/↓ pgup/pgdn: scroll · ctrl+r: refresh · esc: back")
 	return lipgloss.JoinVertical(lipgloss.Left, title, "", m.eventsVP.View(), "", help)
 }
 
@@ -745,7 +745,7 @@ func (m Model) viewDeploy() string {
 	if len(m.versions) == 0 {
 		return lipgloss.JoinVertical(lipgloss.Left, title, current, "", mutedStyle.Render("loading versions..."))
 	}
-	help := mutedStyle.Render("enter: deploy selected · r: refresh · esc: cancel")
+	help := mutedStyle.Render("enter: deploy selected · ctrl+r: refresh · esc: cancel")
 	return lipgloss.JoinVertical(lipgloss.Left, title, current, "", m.verTable.View(), "", help)
 }
 

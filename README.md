@@ -7,7 +7,7 @@ TOTP unlock -> Profile picker -> Region picker -> Tabbed dashboard
               (Beanstalk · EC2 · RDS · Logs · CloudFront · S3 · Parameter Store · SecurityHub)
 ```
 
-One profile, one region at a time. Switch instantly with `ctrl+p` / `ctrl+r`. Header colour-codes the current environment so prod is always red and dev is always green.
+One profile, one region at a time. Switch instantly with `ctrl+p` / `ctrl+g`. Header colour-codes the current environment so prod is always red and dev is always green.
 
 ## Highlights
 
@@ -73,7 +73,8 @@ Subsequent launches within the 4-hour TOTP window skip the prompt.
 | `ctrl+c`             | Quit                                                                |
 | `ctrl+l`             | Lock now (wipe TOTP unlock) and quit                                |
 | `ctrl+p`             | Jump to profile picker                                              |
-| `ctrl+r`             | Jump to region picker                                               |
+| `ctrl+g`             | Jump to region picker                                               |
+| `ctrl+r`             | Refresh the current view (invalidates its cache entry)              |
 | `tab` / `shift+tab`  | Next / previous dashboard tab                                       |
 | `←` / `→`            | Same, from a root list (passes through in sub-screens / inputs)     |
 | `b` / `B`            | Bookmark current row / open bookmarks list                          |
@@ -83,39 +84,39 @@ Subsequent launches within the 4-hour TOTP window skip the prompt.
 
 ### EC2
 
-`enter` SSM start-session · `p` port-forward modal · `i` details · `/` filter · `r` refresh · `y` yank menu
+`enter` SSM start-session · `p` port-forward modal · `i` details · `/` filter · `ctrl+r` refresh · `y` yank menu
 
 ### RDS
 
-`enter` details · `f` build port-forward command (yanked, never run) · `y` yank menu (host / port / master user) · `/` filter · `r` refresh
+`enter` details · `f` build port-forward command (yanked, never run) · `y` yank menu (host / port / master user) · `/` filter · `ctrl+r` refresh
 
 ### CloudWatch Logs
 
-`enter` streams · `t` **in-TUI live tail** · `T` shell-out to `aws logs tail --follow` · `s` search via `FilterLogEvents` · `m` load next 50 groups · `/` filter · `r` refresh
+`enter` streams · `t` **in-TUI live tail** · `T` shell-out to `aws logs tail --follow` · `s` search via `FilterLogEvents` · `m` load next 50 groups · `/` filter · `ctrl+r` refresh
 
 In the in-TUI tail: `/` regex filter · `p` pause/resume · `c` clear buffer · `y` yank visible · `esc` stop
 
 ### CloudFront
 
-`i` create invalidation · `v` view invalidations history · `/` filter · `r` refresh
+`i` create invalidation · `v` view invalidations history · `/` filter · `ctrl+r` refresh
 
 Wildcard `/*` invalidations require typing `INVALIDATE` to confirm.
 
 ### S3
 
-`enter` open bucket / download object · `y` yank menu (s3:// / https / key / bucket) · `/` filter · `r` refresh
+`enter` open bucket / download object · `y` yank menu (s3:// / https / key / bucket) · `/` filter · `ctrl+r` refresh
 
 Inside a bucket, `esc` walks up the prefix tree.
 
 ### Beanstalk
 
-`enter` env details · `e` events · `d` deploy modal · `/` filter · `r` refresh
+`enter` env details · `e` events · `d` deploy modal · `/` filter · `ctrl+r` refresh
 
 Prod environments (name contains `prod`) require typing the env name to confirm a deploy.
 
 ### Parameter Store
 
-`enter` view value · `e` edit · `n` new · `h` history · `/` filter · `r` refresh
+`enter` view value · `e` edit · `n` new · `h` history · `/` filter · `ctrl+r` refresh
 
 In the value view: `r` reveal/mask SecureString (auto-masks after 30s idle) · `y` yank full value · `Y` yank cursor line · `↑/↓` move cursor.
 
@@ -123,7 +124,7 @@ Prod paths (containing `/prod`) require typing the parameter name to confirm a s
 
 ### SecurityHub
 
-`enter` open insight · `a` skip insights → all active findings · `/` filter · `r` refresh
+`enter` open insight · `a` skip insights → all active findings · `/` filter · `ctrl+r` refresh
 
 In the findings list: `1..5` toggle severity (CRIT/HIGH/MED/LOW/INFO) · `s` toggle suppressed visibility · `y` yank menu (arn / title / remediation URL).
 
@@ -161,7 +162,7 @@ All under `~/.aws-tui/` (`%USERPROFILE%\.aws-tui\` on Windows, mode 0700):
 | `audit.log`                  | One JSON line per destructive call; never contains raw secret values  |
 | `cache/<profile>.gob`        | Per-profile read-cache; survives restarts; never contains decrypted parameter values |
 
-Persistent cache TTLs match the in-memory ones (60s on most lists, 5m on S3 buckets, 10m on SecurityHub insights). `r` invalidates and refreshes.
+Persistent cache TTLs match the in-memory ones (60s on most lists, 5m on S3 buckets, 10m on SecurityHub insights). `ctrl+r` invalidates and refreshes.
 
 State (last profile / region / bookmarks / known bucket regions):
 
@@ -189,7 +190,7 @@ Avoid legacy `cmd.exe` and Git Bash (mintty) - alt-screen handling is patchy.
 
 ## Troubleshooting
 
-- **`SSO session expired`** - the error message tells you the exact command. Run `aws sso login --profile <name>` in another shell, then press `r`.
+- **`SSO session expired`** - the error message tells you the exact command. Run `aws sso login --profile <name>` in another shell, then press `ctrl+r`.
 - **SSM session won't start** - confirm `aws ssm start-session --target i-xxxx` works directly from the same shell. If it errors with "session manager plugin not found", install the plugin.
 - **No profiles shown** - `aws-tui` reads `~/.aws/config` and `~/.aws/credentials`. Run `aws configure` or `aws configure sso` to create one, then restart.
 - **SecurityHub empty** - SH is **regional**. Either it isn't enabled in your current region, or you're not in the aggregation region. The empty-state message has the exact `aws securityhub enable-security-hub` command for your context.

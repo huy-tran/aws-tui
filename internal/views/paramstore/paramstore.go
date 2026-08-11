@@ -559,7 +559,7 @@ func (m Model) updateListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filter.Focus()
 		m.status = ""
 		return m, textinput.Blink
-	case "r":
+	case "ctrl+r":
 		m.ctx.Cache.Invalidate("ssm:params:" + m.ctx.Region)
 		m.loading = true
 		m.err = nil
@@ -624,9 +624,9 @@ func (m Model) updateValueKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 	case "r":
-		// Only meaningful for SecureString; for plain String types
-		// 'r' does nothing here (the list view uses it for refresh,
-		// but in modeValue refresh isn't a thing).
+		// Reveal / re-mask a SecureString. This is the one place 'r' is
+		// not refresh: there is nothing to reload in modeValue, and for
+		// plain String types the key is a no-op.
 		if !m.isSecureString() {
 			return m, nil
 		}
@@ -1282,7 +1282,7 @@ func (m Model) HelpItems() []help.Section {
 			{Keys: "e", Desc: "edit"},
 			{Keys: "n", Desc: "new parameter"},
 			{Keys: "/", Desc: "filter"},
-			{Keys: "r", Desc: "refresh"},
+			{Keys: "ctrl+r", Desc: "refresh"},
 		},
 	}}
 }
@@ -1419,7 +1419,7 @@ func formatTime(t *time.Time) string {
 
 func (m Model) View() string {
 	if m.err != nil {
-		hint := "Press r to retry · esc to back."
+		hint := "Press ctrl+r to retry · esc to back."
 		if _, ok := m.err.(*awspkg.SSOExpiredError); ok {
 			hint = "Run `aws sso login --profile " + m.ctx.Profile + "` then press r."
 		}
@@ -1456,7 +1456,7 @@ func (m Model) viewList() string {
 	if len(m.paramsFilt) == 0 && m.filter.Value() != "" {
 		body = mutedStyle.Render("No parameters match filter.")
 	}
-	help := mutedStyle.Render("enter: view · e: edit · n: new · /: filter · r: refresh")
+	help := mutedStyle.Render("enter: view · e: edit · n: new · /: filter · ctrl+r: refresh")
 	parts := []string{header, filterLine, "", body, "", help}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))

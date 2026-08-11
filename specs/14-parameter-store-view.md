@@ -439,6 +439,6 @@ So pressing `e` in modeList doesn't get hijacked by anything, and arrows in mode
 - `e` opens edit; `ctrl+s` calls PutParameter with `Overwrite: true`.
 - `n` opens create with type cycling via tab; rejects names without leading `/`.
 - Names containing `/prod` (case-insensitive) trigger a name-typed confirmation before save.
-- 60s cache on the list; manual `r` refresh invalidates and reloads.
+- 60s cache on the list; manual `ctrl+r` refresh invalidates and reloads.
 - Decrypted values never appear in cache or state files.
 - SSO expiry surfaces with the existing inline-retry pattern from `03-aws-client.md`.

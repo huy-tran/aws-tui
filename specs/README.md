@@ -98,7 +98,7 @@ layout, the implementation outline, acceptance criteria.
 
 - **Single profile context.** Never aggregate across profiles.
 - **Lazy loading.** No AWS API calls before a view opens.
-- **Cache aggressively.** TTL on list operations; manual refresh with `r`.
+- **Cache aggressively.** TTL on list operations; manual refresh with `ctrl+r`.
 - **Shell out, don't reimplement.** SSM sessions and the `T` tail fallback delegate to the AWS CLI.
 - **Fail loudly on auth.** Detect expired SSO and surface the exact `aws sso login` command inline.
 - **Persistent context header.** Always show profile + region + service, colour-coded by environment.
