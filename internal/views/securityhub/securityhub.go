@@ -524,7 +524,7 @@ func (m Model) updateFindingKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.sev.informational = !m.sev.informational
 		m.applyFindingFilter()
 		return m, nil
-	case "s":
+	case "x":
 		m.showSuppress = !m.showSuppress
 		m.applyFindingFilter()
 		return m, nil
@@ -652,7 +652,7 @@ func (m Model) HelpItems() []help.Section {
 				{Keys: "enter", Desc: "finding detail"},
 				{Keys: "y", Desc: "yank menu: a=arn, t=title, l=remediation URL"},
 				{Keys: "1/2/3/4/5", Desc: "toggle severity (CRIT/HIGH/MED/LOW/INFO)"},
-				{Keys: "s", Desc: "toggle suppressed visibility"},
+				{Keys: "x", Desc: "toggle suppressed visibility"},
 				{Keys: "ctrl+r", Desc: "refresh"},
 				{Keys: "esc", Desc: "back"},
 			},
@@ -1004,7 +1004,7 @@ func (m Model) viewInsights() string {
 			"also returns 0 (or errors with InvalidAccessException) you'll get",
 			"a clearer signal about which of the above applies.",
 		}, "\n"))
-		help := mutedStyle.Render("a: try all findings · r: retry · ←/→ or tab: other tabs")
+		help := mutedStyle.Render("a: try all findings · ctrl+r: retry · ←/→ or tab: other tabs")
 		return lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", help)
 	}
 	header := headerStyle.Render(fmt.Sprintf("SecurityHub Insights (%d)", len(m.insights)))
@@ -1052,7 +1052,7 @@ func (m Model) viewFindings() string {
 	if len(m.findingsFilt) == 0 {
 		body = mutedStyle.Render("No findings match the current filters.")
 	}
-	help := mutedStyle.Render("enter: details · y a/t/l: yank · 1-5 sev toggle · s suppressed · esc back")
+	help := mutedStyle.Render("enter: details · y a/t/l: yank · 1-5 sev toggle · x suppressed · esc back")
 	parts := []string{title, toggles}
 	if m.findingsCapped {
 		parts = append(parts, mutedStyle.Render(fmt.Sprintf("showing first %d - refine via the insight", maxFindingsFetch)))

@@ -82,6 +82,8 @@ func GlobalSection() Section {
 			{Keys: "tab / shift+tab", Desc: "next / previous tab"},
 			{Keys: "←/→", Desc: "next / previous tab (root list)"},
 			{Keys: "s then 1..N", Desc: "sort active table by column (repeat to flip direction)"},
+			{Keys: "g / G", Desc: "jump to top / bottom"},
+			{Keys: "ctrl+b / ctrl+f", Desc: "page up / page down"},
 			{Keys: "b", Desc: "bookmark current row (toggle)"},
 			{Keys: "B", Desc: "open bookmarks list"},
 			{Keys: "?", Desc: "toggle this help"},

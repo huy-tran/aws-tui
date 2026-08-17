@@ -28,6 +28,7 @@ import (
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
+	"github.com/huy-tran/aws-tui/internal/ui/scroll"
 	"github.com/huy-tran/aws-tui/internal/ui/statusbar"
 )
 
@@ -210,7 +211,9 @@ func New(ctx *awspkg.Context) Model {
 	pat.Width = 50
 
 	vp := viewport.New(0, 0)
+	vp.KeyMap = scroll.KeyMap()
 	tailVP := viewport.New(0, 0)
+	tailVP.KeyMap = scroll.KeyMap()
 	tailFlt := textinput.New()
 	tailFlt.Placeholder = "regex filter"
 	tailFlt.CharLimit = 256
@@ -492,6 +495,9 @@ func (m Model) updateLiveTailKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if body != "" {
 			m.status = doYank(body, "tail buffer")
 		}
+		return m, nil
+	}
+	if scroll.Jump(&m.tailViewport, msg.String()) {
 		return m, nil
 	}
 	var cmd tea.Cmd
@@ -905,6 +911,9 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if scroll.Jump(&m.viewport, msg.String()) {
+			return m, nil
+		}
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
@@ -945,6 +954,9 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(m.results) > 0 {
 				m.status = doYank(renderEvents(m.results, 0, false, m.jsonPretty), "all matches")
 			}
+			return m, nil
+		}
+		if scroll.Jump(&m.viewport, msg.String()) {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -993,7 +1005,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.target = *g
 				return m, m.tailCmd(g.Name)
 			}
-		case "s":
+		case "S":
 			if g := m.selectedGroup(); g != nil {
 				m.target = *g
 				m.mode = modeSearch
@@ -1138,7 +1150,7 @@ func (m Model) HelpItems() []help.Section {
 		Items: []help.Item{
 			{Keys: "enter", Desc: "open streams"},
 			{Keys: "t", Desc: "tail (shells out to aws logs tail)"},
-			{Keys: "s", Desc: "search via FilterLogEvents"},
+			{Keys: "S", Desc: "search via FilterLogEvents"},
 			{Keys: "/", Desc: "filter"},
 			{Keys: "ctrl+r", Desc: "refresh"},
 		},
@@ -1373,7 +1385,7 @@ func (m Model) View() string {
 	if len(m.groupsFilt) == 0 {
 		body = mutedStyle.Render("No groups match filter.")
 	}
-	help := mutedStyle.Render("enter: streams · t: tail (shells out) · s: search · /: filter · ctrl+r: refresh")
+	help := mutedStyle.Render("enter: streams · t: tail (shells out) · S: search · /: filter · ctrl+r: refresh")
 	return lipgloss.JoinVertical(lipgloss.Left, header, filterLine, "", body, "", help)
 }
 

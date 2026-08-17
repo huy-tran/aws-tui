@@ -65,12 +65,12 @@ Pressing `f` opens a small modal:
 │ Remote port:       [5432]                                          │
 │ Local port:        [15432]                                         │
 │                                                                    │
-│ ctrl+s: yank command (does not run)                                │
+│ enter: yank command (does not run)                                 │
 │ esc: cancel                                                        │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-`ctrl+s` puts the fully-built command on the clipboard. It does **not** execute. The user pastes it into their own shell. This is deliberate — the SSM session opens a long-running process and the TUI shouldn't fight for stdin while it does. (We can offer a separate "run it now" key later via `tea.ExecProcess` if that turns out to be a common ask.)
+`enter` puts the fully-built command on the clipboard. It does **not** execute. The user pastes it into their own shell. This is deliberate — the SSM session opens a long-running process and the TUI shouldn't fight for stdin while it does. (We can offer a separate "run it now" key later via `tea.ExecProcess` if that turns out to be a common ask.)
 
 Bastion instance defaults to `i-` so the user can paste / type the rest. Future polish: pre-populate with a remembered last-used bastion per profile (would live in `state.json`).
 
@@ -117,7 +117,7 @@ Beanstalk · EC2 · RDS · Logs · CloudFront · S3 · Parameter Store · Securi
 - List shows Identifier / Engine / Status / Endpoint with the status colour-coded.
 - `/` filters by identifier / engine / endpoint / DB name (case-insensitive).
 - `enter` opens details with full metadata.
-- `f` opens port-forward modal; `ctrl+s` yanks the built command without running.
+- `f` opens port-forward modal; `enter` yanks the built command without running.
 - `y` opens yank menu: `h` endpoint host, `p` port, `u` master user.
 - `ctrl+r` refreshes (invalidates cache).
 - View implements CapturingInput / InSubnav / HelpItems / StatusFooter just like every other tab.

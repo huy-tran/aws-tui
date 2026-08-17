@@ -373,7 +373,7 @@ func (m Model) updatePortForwardKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.remotePortIn.Blur()
 		m.localPortIn.Blur()
 		return m, nil
-	case "ctrl+s":
+	case "enter":
 		cmd, err := buildPortForwardCommand(m.ctx.Profile, m.ctx.Region,
 			strings.TrimSpace(m.bastionInput.Value()),
 			m.target.Endpoint,
@@ -487,7 +487,7 @@ func (m Model) HelpItems() []help.Section {
 			Title: "RDS · port-forward",
 			Items: []help.Item{
 				{Keys: "tab / S-tab", Desc: "cycle fields"},
-				{Keys: "ctrl+s", Desc: "yank built command (does not run)"},
+				{Keys: "enter", Desc: "yank built command (does not run)"},
 				{Keys: "esc", Desc: "cancel"},
 			},
 		}}
@@ -676,7 +676,7 @@ func (m Model) viewPortForward() string {
 		mutedStyle.Render(focusLabel("Local port", m.pfFocus == 2)),
 		m.localPortIn.View(),
 		"",
-		mutedStyle.Render("ctrl+s: yank command (does not run) · tab: cycle · esc: cancel"),
+		mutedStyle.Render("enter: yank command (does not run) · tab: cycle · esc: cancel"),
 	}
 	if m.status != "" {
 		parts = append(parts, mutedStyle.Render(m.status))

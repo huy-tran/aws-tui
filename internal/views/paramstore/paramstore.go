@@ -679,10 +679,10 @@ func (m Model) updateValueKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "end", "G":
 		m.moveValueCursorTo(len(m.valueLines) - 1)
 		return m, nil
-	case "pgup":
+	case "pgup", "ctrl+b":
 		m.moveValueCursor(-m.valueViewport.Height)
 		return m, nil
-	case "pgdown", " ":
+	case "pgdown", "ctrl+f", " ":
 		m.moveValueCursor(m.valueViewport.Height)
 		return m, nil
 	}

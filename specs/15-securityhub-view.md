@@ -71,7 +71,7 @@ The `Count` column is the number of active findings (RecordState=ACTIVE) attribu
 
 Severity prefix is colour-coded: Critical = red bg, High = orange, Medium = yellow, Low = blue, Informational = grey. `Age` is human-relative ("2d", "12h", "47m") based on the finding's `UpdatedAt`.
 
-The sev/state toggles at the top are local view filters (don't re-query). `1`/`2`/`3`/`4`/`5` toggle severity columns; `s` toggles suppressed visibility.
+The sev/state toggles at the top are local view filters (don't re-query). `1`/`2`/`3`/`4`/`5` toggle severity columns; `x` toggles suppressed visibility.
 
 ## Layout — finding detail
 
@@ -505,7 +505,7 @@ func (m Model) InSubnav() bool {
 }
 ```
 
-Letter hotkeys (1/2/3/4/5 for severity toggles, s for suppressed, a for "all findings") are safe everywhere because the dashboard no longer hijacks letters.
+Letter hotkeys (1/2/3/4/5 for severity toggles, x for suppressed, a for "all findings") are safe everywhere because the dashboard no longer hijacks letters.
 
 ## Empty / unsubscribed handling
 
@@ -537,7 +537,7 @@ Render that with the existing `errorStyle` so the user knows what to do rather t
 - `enter` on a result loads findings filtered by that group; banner shows scope.
 - `a` from insights list loads all active findings, no group filter.
 - Findings list sorted by severity rank, then updated-at desc.
-- Severity prefix is colour-coded; `1`/`2`/`3`/`4`/`5` toggle severity rows; `s` toggles suppressed visibility.
+- Severity prefix is colour-coded; `1`/`2`/`3`/`4`/`5` toggle severity rows; `x` toggles suppressed visibility.
 - `enter` on a finding shows the detail view.
 - `y a` yanks finding ARN; `y t` yanks title; `y l` yanks remediation URL (or empty status if missing).
 - 10m cache on insights, 60s cache on findings; `ctrl+r` invalidates and reloads.

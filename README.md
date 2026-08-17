@@ -79,6 +79,8 @@ Subsequent launches within the 4-hour TOTP window skip the prompt.
 | `←` / `→`            | Same, from a root list (passes through in sub-screens / inputs)     |
 | `b` / `B`            | Bookmark current row / open bookmarks list                          |
 | `s` then `1..N`      | Sort active table by column N (repeat to flip direction)            |
+| `g` / `G`            | Jump to top / bottom (tables and scrolling views alike)             |
+| `ctrl+b` / `ctrl+f`  | Page up / page down                                                 |
 | `?`                  | Toggle help overlay                                                 |
 | `esc`                | View-local: clear filter, back out of a sub-mode, or pop the stack  |
 
@@ -92,7 +94,7 @@ Subsequent launches within the 4-hour TOTP window skip the prompt.
 
 ### CloudWatch Logs
 
-`enter` streams · `t` **in-TUI live tail** · `T` shell-out to `aws logs tail --follow` · `s` search via `FilterLogEvents` · `m` load next 50 groups · `/` filter · `ctrl+r` refresh
+`enter` streams · `t` **in-TUI live tail** · `T` shell-out to `aws logs tail --follow` · `S` search via `FilterLogEvents` · `m` load next 50 groups · `/` filter · `ctrl+r` refresh
 
 In the in-TUI tail: `/` regex filter · `p` pause/resume · `c` clear buffer · `y` yank visible · `esc` stop
 
@@ -126,7 +128,7 @@ Prod paths (containing `/prod`) require typing the parameter name to confirm a s
 
 `enter` open insight · `a` skip insights → all active findings · `/` filter · `ctrl+r` refresh
 
-In the findings list: `1..5` toggle severity (CRIT/HIGH/MED/LOW/INFO) · `s` toggle suppressed visibility · `y` yank menu (arn / title / remediation URL).
+In the findings list: `1..5` toggle severity (CRIT/HIGH/MED/LOW/INFO) · `x` toggle suppressed visibility · `y` yank menu (arn / title / remediation URL).
 
 ## CLI flags
 

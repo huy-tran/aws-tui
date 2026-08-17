@@ -57,7 +57,7 @@ func (m detailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.yankPending = true
 			m.status = "yank: i=ID · p=private IP · d=public DNS"
 			return m, nil
-		case "esc", "q":
+		case "esc":
 			return m, nav.PopView()
 		}
 	}

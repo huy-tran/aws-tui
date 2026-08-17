@@ -23,6 +23,7 @@ import (
 	"github.com/huy-tran/aws-tui/internal/ui/datatable"
 	"github.com/huy-tran/aws-tui/internal/ui/help"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
+	"github.com/huy-tran/aws-tui/internal/ui/scroll"
 	"github.com/huy-tran/aws-tui/internal/ui/statusbar"
 )
 
@@ -146,7 +147,10 @@ func New(ctx *awspkg.Context) Model {
 	flt.CharLimit = 64
 	flt.Prompt = "/ "
 
-	return Model{ctx: ctx, envTable: envT, verTable: verT, confirm: ti, filter: flt, eventsVP: viewport.New(0, 0), loader: loader.New(), loading: true}
+	eventsVP := viewport.New(0, 0)
+	eventsVP.KeyMap = scroll.KeyMap()
+
+	return Model{ctx: ctx, envTable: envT, verTable: verT, confirm: ti, filter: flt, eventsVP: eventsVP, loader: loader.New(), loading: true}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -397,6 +401,9 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "ctrl+r":
 			return m, m.loadEventsCmd(m.target.EnvName)
+		}
+		if scroll.Jump(&m.eventsVP, msg.String()) {
+			return m, nil
 		}
 		var cmd tea.Cmd
 		m.eventsVP, cmd = m.eventsVP.Update(msg)

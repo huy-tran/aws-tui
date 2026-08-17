@@ -17,6 +17,7 @@ import (
 	awspkg "github.com/huy-tran/aws-tui/internal/aws"
 	"github.com/huy-tran/aws-tui/internal/nav"
 	"github.com/huy-tran/aws-tui/internal/ui/loader"
+	"github.com/huy-tran/aws-tui/internal/ui/scroll"
 )
 
 // consoleModel is pushed onto the view stack when the user presses 'c' on
@@ -43,6 +44,7 @@ type consoleLoadedMsg struct {
 
 func newConsole(ctx *awspkg.Context, inst Instance) consoleModel {
 	vp := viewport.New(0, 0)
+	vp.KeyMap = scroll.KeyMap()
 	return consoleModel{
 		ctx:     ctx,
 		inst:    inst,
@@ -124,7 +126,7 @@ func (m consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "esc", "q":
+		case "esc":
 			return m, nav.PopView()
 		case "ctrl+r":
 			m.loading = true
@@ -142,6 +144,9 @@ func (m consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.status = "copied console output"
 			}
+			return m, nil
+		}
+		if scroll.Jump(&m.vp, msg.String()) {
 			return m, nil
 		}
 	}
